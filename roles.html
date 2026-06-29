@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance — Role Views</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#EAEDF2; --surface:#FFFFFF; --surface-2:#F5F7FA; --ink:#152033; --ink2:#36425A;
+  --muted:#6B7686; --faint:#9AA4B2; --line:#E4E9F0; --line2:#D4DCE6;
+  --chrome:#141E36; --chrome2:#1C2942; --chrome-ink:#EAEEF6; --chrome-muted:#8893AC; --chrome-line:#2A3650;
+  --accent:#4F46E5; --accent-soft:#EDEEFE; --accent-ink:#3730C4;
+  --pass:#12925D; --pass-bg:#E3F3EA; --pass-cell:#CBEAD8; --pass-ink:#0B6E45;
+  --fail:#D8324C; --fail-bg:#FBE5E9; --fail-cell:#F5CCD4; --fail-ink:#A81F36;
+  --warn:#C27600; --warn-bg:#FAEFD7; --warn-ink:#8A5400;
+  --none:#E7EBF1; --none-ink:#AEB7C4;
+  --sh:0 1px 2px rgba(21,32,51,.04),0 4px 12px -4px rgba(21,32,51,.08);
+  --sh2:0 2px 4px rgba(21,32,51,.05),0 12px 28px -10px rgba(21,32,51,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--canvas);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+.disp{font-family:'Space Grotesk',sans-serif}
+.shell{display:grid;grid-template-columns:248px 1fr;height:100vh;overflow:hidden}
+
+/* ===== RAIL ===== */
+.rail{background:var(--chrome);color:var(--chrome-ink);display:flex;flex-direction:column;overflow:hidden}
+.rail-head{padding:18px 18px 16px;border-bottom:1px solid var(--chrome-line);display:flex;align-items:center;gap:11px}
+.logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#7c5cff);display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
+.rail-head h1{font-family:'Space Grotesk';font-size:14px;font-weight:600;letter-spacing:-.2px}
+.rail-head .sub{font-size:10.5px;color:var(--chrome-muted);margin-top:1px;letter-spacing:.2px}
+.rail-body{flex:1;overflow-y:auto;padding:14px 12px}
+.rail-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--chrome-muted);font-weight:600;padding:8px 8px 8px}
+.rnode{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:12.5px;position:relative;transition:background .14s}
+.rnode:hover{background:rgba(255,255,255,.06)}
+.rnode.l1{font-weight:600}
+.rnode.l2{padding-left:26px;color:var(--chrome-ink);font-size:12px}
+.rnode.l3{padding-left:40px;color:var(--chrome-muted);font-size:11.5px}
+.rnode.on{background:linear-gradient(90deg,rgba(79,70,229,.28),rgba(79,70,229,.05))}
+.rnode.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:3px;background:var(--accent)}
+.rnode .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rnode .pc{font-family:'JetBrains Mono';font-size:11px;color:var(--chrome-muted);font-weight:600}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sdot.g{background:#34D399}.sdot.r{background:#F87171}
+.rail-card{margin:8px;padding:13px;background:rgba(255,255,255,.05);border:1px solid var(--chrome-line);border-radius:11px}
+.rail-card .rc-l{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--chrome-muted);font-weight:600;margin-bottom:7px}
+.rail-card .rc-big{font-family:'Space Grotesk';font-size:26px;font-weight:600;letter-spacing:-1px;line-height:1}
+.rail-card .rc-sub{font-size:11px;color:var(--chrome-muted);margin-top:5px}
+.rail-foot{padding:12px 16px;border-top:1px solid var(--chrome-line);display:flex;align-items:center;gap:8px;font-size:11px;color:var(--chrome-muted)}
+.av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#5b6bff,#8a5cff);display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700}
+
+/* ===== MAIN ===== */
+.main{display:flex;flex-direction:column;overflow:hidden}
+.bar{display:flex;align-items:center;gap:14px;height:62px;flex-shrink:0;padding:0 22px;background:var(--surface);border-bottom:1px solid var(--line)}
+.crumb{font-size:12.5px;color:var(--muted);margin-right:auto;display:flex;align-items:center;gap:7px}
+.crumb b{color:var(--ink);font-family:'Space Grotesk';font-weight:600}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:3px}
+.seg button{border:none;background:none;font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--accent-ink);box-shadow:var(--sh)}
+.pill{display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:500;cursor:pointer}
+.btn{background:var(--ink);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;gap:6px;align-items:center}
+.scroll{flex:1;overflow-y:auto;padding:22px}
+
+/* hero band */
+.hero{display:grid;gap:16px;margin-bottom:18px}
+.hero.dean{grid-template-columns:1.5fr 1fr 1fr 1fr}
+.hero.hod{grid-template-columns:1.6fr 1fr 1fr}
+.hero.teacher{grid-template-columns:1.4fr 1fr 1fr}
+.hcard{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:18px 20px;box-shadow:var(--sh);position:relative;overflow:hidden}
+.hcard.lead{background:linear-gradient(180deg,var(--surface),var(--surface-2))}
+.hcard .hl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:600;margin-bottom:10px}
+.hbig{font-family:'Space Grotesk';font-weight:600;letter-spacing:-2px;line-height:.95;color:var(--ink)}
+.hcard.lead .hbig{font-size:60px}
+.hbig{font-size:34px}
+.hbig small{font-size:.45em;color:var(--muted);letter-spacing:0}
+.hbig.g{color:var(--pass)}.hbig.r{color:var(--fail)}
+.hmeta{font-size:12px;color:var(--muted);margin-top:9px;display:flex;align-items:center;gap:6px}
+.delta{font-family:'JetBrains Mono';font-size:12px;font-weight:600}
+.up{color:var(--pass)}.down{color:var(--fail)}
+.spark{margin-top:10px}
+.statline{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;font-family:'JetBrains Mono'}
+.tag.r{background:var(--fail-bg);color:var(--fail-ink)}.tag.g{background:var(--pass-bg);color:var(--pass-ink)}.tag.w{background:var(--warn-bg);color:var(--warn-ink)}
+
+/* generic panel */
+.grid{display:grid;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:17px 19px;box-shadow:var(--sh)}
+.panel.pad0{padding:0;overflow:hidden}
+.ph{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.ph h3{font-family:'Space Grotesk';font-size:14.5px;font-weight:600}
+.ph .sub{font-size:11px;color:var(--muted)}
+.ph2{padding:16px 19px 0}
+
+/* matrix */
+table.mx{width:100%;border-collapse:collapse}
+table.mx th{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600;padding:11px 6px;text-align:center}
+table.mx th.l{text-align:left;padding-left:19px}
+table.mx td{border-top:1px solid var(--line);padding:0 5px}
+table.mx tr:hover td{background:var(--surface-2)}
+.rn{padding:12px 6px 12px 19px;font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:8px}
+.rn .st{font-family:'JetBrains Mono';font-size:10px;color:var(--faint);font-weight:500}
+.cell{margin:5px auto;width:60px;height:36px;border-radius:9px;display:grid;place-items:center;font-family:'JetBrains Mono';font-weight:700;font-size:13.5px;cursor:pointer;transition:transform .12s,box-shadow .12s}
+.cell:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+.cell.g{background:var(--pass-cell);color:var(--pass-ink)}.cell.r{background:var(--fail-cell);color:var(--fail-ink)}
+.cell.none{background:var(--none);color:var(--none-ink);font-size:10px;cursor:default}.cell.none:hover{transform:none;box-shadow:none}
+.cell.avg{background:transparent;border:1.5px dashed var(--line2)}.cell.avg.g{color:var(--pass-ink);border-color:var(--pass)}.cell.avg.r{color:var(--fail-ink);border-color:var(--fail)}
+.rsp{width:120px;height:30px}
+
+/* comparison bars */
+.cmp{display:flex;flex-direction:column;gap:3px}
+.cmpr{display:grid;grid-template-columns:128px 1fr 50px;align-items:center;gap:12px;padding:8px 0;cursor:pointer;border-radius:8px}
+.cmpr.me{background:var(--accent-soft);margin:0 -10px;padding:8px 10px;border-radius:9px}
+.cmpr .cnm{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+.cmpr.me .cnm{color:var(--accent-ink)}
+.cnm .schtag{font-size:9px;color:var(--faint);font-family:'JetBrains Mono'}
+.meflag{font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:10px;font-weight:700}
+.ctk{height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden;position:relative}
+.cfl{height:100%;border-radius:6px}.cfl.g{background:var(--pass)}.cfl.r{background:var(--fail)}.cfl.me{background:var(--accent)}
+.cth{position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--ink);opacity:.28}
+.cvv{font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;text-align:right}
+
+/* ranked list rows */
+.rk{display:flex;flex-direction:column}
+.rkr{display:grid;grid-template-columns:22px 1fr 64px 46px;align-items:center;gap:11px;padding:10px 6px;border-top:1px solid var(--line);cursor:pointer}
+.rkr:first-child{border-top:none}.rkr:hover{background:var(--surface-2);border-radius:8px}
+.rkr .rkn{font-family:'JetBrains Mono';font-size:13px;color:var(--faint);font-weight:700}
+.rkr .rknm{font-size:12.5px;font-weight:600}
+.rmini{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden}.rmini i{display:block;height:100%;border-radius:4px}
+.rkr .rkp{font-family:'JetBrains Mono';font-size:13px;font-weight:700;text-align:right}
+
+/* entry (teacher) */
+.entry{background:linear-gradient(180deg,var(--surface),var(--surface-2));border:1px solid var(--line);border-radius:15px;padding:19px;box-shadow:var(--sh)}
+.entry h3{font-family:'Space Grotesk';font-size:15px;font-weight:600;margin-bottom:3px}
+.entry .esub{font-size:11.5px;color:var(--muted);margin-bottom:15px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;min-height:38px;align-items:flex-start}
+.achip{font-family:'JetBrains Mono';font-weight:700;font-size:13px;background:var(--fail-bg);color:var(--fail-ink);padding:7px 12px;border-radius:9px;display:flex;align-items:center;gap:7px}
+.achip span{cursor:pointer;opacity:.6}
+.entry-in{display:flex;gap:9px}
+.entry-in input{flex:1;border:1px solid var(--line2);border-radius:9px;padding:11px 13px;font-family:'JetBrains Mono';font-size:13px;outline:none}
+.entry-in input:focus{border-color:var(--accent)}
+.ebtn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.ebtn.ghost{background:var(--surface);color:var(--ink2);border:1px solid var(--line2)}
+.erow{display:flex;gap:9px;margin-top:11px}
+
+/* ring */
+.ring-wrap{display:flex;align-items:center;gap:20px}
+.ring-meta .rm-big{font-family:'Space Grotesk';font-size:15px;font-weight:600}
+.ring-meta .rm-l{font-size:11px;color:var(--muted)}
+
+/* compliance */
+.comp-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}
+.comp-row:first-child{border-top:none}
+.comp-row .cl{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.cstat{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
+.cstat.ok{background:var(--pass-bg);color:var(--pass-ink)}.cstat.wait{background:var(--warn-bg);color:var(--warn-ink)}
+
+.viewtitle{font-family:'Space Grotesk';font-size:22px;font-weight:600;letter-spacing:-.5px;margin-bottom:2px}
+.viewsub{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px;border:2px solid var(--canvas)}
+.rail-body::-webkit-scrollbar-thumb{background:var(--chrome-line)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail" id="rail"></aside>
+  <main class="main">
+    <div class="bar">
+      <div class="crumb" id="crumb"></div>
+      <div class="seg" id="roleseg">
+        <button data-r="teacher">Teacher</button>
+        <button data-r="hod">HOD</button>
+        <button data-r="dean" class="on">Dean</button>
+      </div>
+      <span class="pill">📅 Wed, 15 Jan</span>
+      <button class="btn">↧ Export</button>
+    </div>
+    <div class="scroll" id="view"></div>
+  </main>
+</div>
+
+<script>
+const spark=(vals,up)=>{const W=120,H=30,p=3,lo=Math.min(...vals)-2,hi=Math.max(...vals)+2,x=i=>p+i/(vals.length-1)*(W-2*p),y=v=>H-p-(v-lo)/(hi-lo)*(H-2*p),c=up?'var(--pass)':'var(--fail)';let d=vals.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');return `<svg class="rsp" viewBox="0 0 ${W} ${H}"><path d="${d} L ${x(vals.length-1)} ${H} L ${x(0)} ${H} Z" fill="${c}" opacity=".09"/><path d="${d}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${x(vals.length-1)}" cy="${y(vals[vals.length-1])}" r="2.4" fill="${c}"/></svg>`};
+const wideSpark=(vals,id,col)=>{const W=440,H=120,pad={l:6,r:8,t:12,b:10};const lo=Math.min(...vals)-3,hi=Math.max(...vals)+3,x=i=>pad.l+i/(vals.length-1)*(W-pad.l-pad.r),y=v=>pad.t+(H-pad.t-pad.b)-(v-lo)/(hi-lo)*(H-pad.t-pad.b);let d=vals.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');const ty=pad.t+(H-pad.t-pad.b)-(75-lo)/(hi-lo)*(H-pad.t-pad.b);return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"><line x1="${pad.l}" y1="${ty}" x2="${W-pad.r}" y2="${ty}" stroke="var(--fail)" stroke-width="1" stroke-dasharray="4 3" opacity=".6"/><text x="${W-pad.r}" y="${ty-4}" text-anchor="end" font-size="9" fill="var(--fail)" font-family="JetBrains Mono">75</text><path d="${d} L ${x(vals.length-1)} ${H-pad.b} L ${x(0)} ${H-pad.b} Z" fill="${col}" opacity=".07"/><path d="${d}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${x(vals.length-1)}" cy="${y(vals[vals.length-1])}" r="3.5" fill="${col}"/></svg>`};
+
+const trends={
+  aids:[86,88,87,89,88,90,89,91,90,90,88,89,90,91,90,92,91,90,89,90],
+  cse:[84,83,82,81,82,80,81,79,80,81,80,79,80,81,80,80,79,80,81,80],
+  it:[78,77,76,75,74,75,74,73,74,73,74,73,72,73,74,73,73,74,73,73],
+  ece:[76,75,74,73,72,71,70,72,71,70,69,70,71,70,69,70,71,70,69,70],
+  mech:[72,71,70,69,70,68,69,67,68,69,68,67,68,69,68,67,68,69,68,68],
+  cseA:[82,80,79,81,80,78,80,79,81,80,79,80,78,79,80,79,80,81,79,79],
+  college:[80,80.5,79,78,78.5,77,77.5,79,80,76,75.5,76,77.5,76,75,76.5,75.5,74.5,75.5,76.8],
+  itDept:[78,77,77,76,75,76,75,74,75,74,75,74,73,74,75,74,74,75,73,73.4]
+};
+
+/* ============ RAILS ============ */
+const railDean=`
+<div class="rail-head"><div class="logo">H</div><div><h1>Attendance Console</h1><div class="sub">HITS · First hour</div></div></div>
+<div class="rail-body">
+  <div class="rail-lbl">Institution</div>
+  <div class="rnode l1 on"><span class="nm">HITS — All Schools</span><span class="pc">76.8</span></div>
+  <div class="rnode l1"><span class="nm">Computing Sciences</span><span class="sdot r"></span></div>
+  <div class="rnode l2"><span class="nm">AI & Data Science</span><span class="sdot g"></span><span class="pc">90</span></div>
+  <div class="rnode l2"><span class="nm">Computer Science</span><span class="sdot g"></span><span class="pc">80</span></div>
+  <div class="rnode l2"><span class="nm">Information Tech</span><span class="sdot r"></span><span class="pc">73</span></div>
+  <div class="rnode l1"><span class="nm">Engineering</span><span class="sdot r"></span></div>
+  <div class="rnode l2"><span class="nm">Electronics & Comm</span><span class="sdot r"></span><span class="pc">70</span></div>
+  <div class="rnode l2"><span class="nm">Mechanical</span><span class="sdot r"></span><span class="pc">68</span></div>
+  <div class="rnode l1"><span class="nm">Management</span><span class="sdot g"></span></div>
+  <div class="rnode l1"><span class="nm">Law</span><span class="sdot g"></span></div>
+  <div class="rnode l1"><span class="nm">Architecture</span><span class="sdot g"></span></div>
+</div>
+<div class="rail-foot"><span class="av">DA</span> Dr. A. Geetha · Dean Academics</div>`;
+
+const railHod=`
+<div class="rail-head"><div class="logo">IT</div><div><h1>IT Department</h1><div class="sub">School of Computing</div></div></div>
+<div class="rail-body">
+  <div class="rail-lbl">My sections</div>
+  <div class="rnode l1 on"><span class="nm">Department overview</span><span class="pc">73.4</span></div>
+  <div class="rnode l1"><span class="nm">Section A</span><span class="sdot r"></span><span class="pc">74</span></div>
+  <div class="rnode l1"><span class="nm">Section B</span><span class="sdot r"></span><span class="pc">73</span></div>
+  <div class="rnode l1"><span class="nm">Section C</span><span class="sdot g"></span><span class="pc">—</span></div>
+  <div class="rail-card">
+    <div class="rc-l">Dept rank in college</div>
+    <div class="rc-big">7<small style="font-size:16px;color:var(--chrome-muted)">/9</small></div>
+    <div class="rc-sub">↓ below college avg of 76.8%</div>
+  </div>
+</div>
+<div class="rail-foot"><span class="av">RS</span> Dr. R. Suresh · HOD, IT</div>`;
+
+const railTeacher=`
+<div class="rail-head"><div class="logo">CS</div><div><h1>My Classes</h1><div class="sub">First-hour entry</div></div></div>
+<div class="rail-body">
+  <div class="rail-lbl">Assigned to me</div>
+  <div class="rnode l1 on"><span class="nm">CSE · Section A</span><span class="sdot g"></span><span class="pc">79</span></div>
+  <div class="rnode l1"><span class="nm">CSE · Section C</span><span class="sdot g"></span><span class="pc">78</span></div>
+  <div class="rail-card">
+    <div class="rc-l">Today's status</div>
+    <div class="rc-big" style="color:#34D399">Done</div>
+    <div class="rc-sub">Both sections reported · 9:12 AM</div>
+  </div>
+</div>
+<div class="rail-foot"><span class="av">PK</span> Prof. P. Kumar · Faculty</div>`;
+
+/* ============ DEAN VIEW ============ */
+function deanView(){
+  const row=(nm,st,a,b,c,avg,tr,up)=>`<tr><td><div class="rn">${nm} <span class="st">${st}</span></div></td>
+    ${[a,b,c].map(v=>v==null?`<td><div class="cell none">no sess</div></td>`:`<td><div class="cell ${v>=75?'g':'r'}">${v}</div></td>`).join('')}
+    <td><div class="cell avg ${avg>=75?'g':'r'}">${avg}</div></td><td>${spark(tr,up)}</td></tr>`;
+  return `
+  <div class="crumb-x"></div>
+  <div class="viewtitle">College Overview</div>
+  <div class="viewsub">Every school and department · 14 sections reporting today</div>
+  <div class="hero dean">
+    <div class="hcard lead"><div class="hl">College attendance · today</div>
+      <div class="hbig g">76.8<small>%</small></div>
+      <div class="hmeta"><span class="delta up">▲ 0.7</span> vs yesterday · weighted across 1,116 students</div>
+    </div>
+    <div class="hcard"><div class="hl">Departments below 75%</div><div class="hbig r">3<small>/9</small></div><div class="statline"><span class="tag r">IT</span><span class="tag r">ECE</span><span class="tag r">MECH</span></div></div>
+    <div class="hcard"><div class="hl">Pending reports</div><div class="hbig">2</div><div class="hmeta">IT-C, MECH-B not in</div></div>
+    <div class="hcard"><div class="hl">Biggest single-day drop</div><div class="hbig r">12<small>%</small></div><div class="hmeta">ECE · Section C</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1.55fr 1fr">
+    <div class="panel pad0">
+      <div class="ph ph2"><div><h3>Department × Section</h3></div><div class="sub">Green ≥75 · Red &lt;75 · click to drill</div></div>
+      <table class="mx"><tr><th class="l">Dept</th><th>Sec A</th><th>Sec B</th><th>Sec C</th><th>Avg</th><th style="text-align:left">20-day</th></tr>
+        ${row('AI&DS','185',93,88,88,90,trends.aids,true)}
+        ${row('CSE','178',79,82,78,80,trends.cse,false)}
+        ${row('IT','184',74,73,null,73,trends.it,false)}
+        ${row('ECE','182',75,61,74,70,trends.ece,false)}
+        ${row('MECH','120',60,75,68,68,trends.mech,false)}
+      </table>
+    </div>
+    <div class="grid" style="grid-template-rows:auto auto;gap:16px">
+      <div class="panel"><div class="ph"><h3>Department leaderboard</h3></div>
+        <div class="rk">
+          ${[['AI&DS',89.7,'g'],['CSE',79.8,'g'],['IT',73.4,'r'],['ECE',70.3,'r'],['MECH',67.5,'r']].map((d,i)=>`<div class="rkr"><span class="rkn">${i+1}</span><span class="rknm">${d[0]}</span><div class="rmini"><i style="width:${d[1]}%;background:var(--${d[2]==='g'?'pass':'fail'})"></i></div><span class="rkp" style="color:var(--${d[2]==='g'?'pass':'fail'}-ink)">${d[1]}</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Chronic offenders <span style="color:var(--fail)">⚠</span></h3></div>
+        <div class="rk">
+          ${[['ECE · Sec B','20 days',61],['MECH · Sec A','20 days',60],['IT · Sec B','10 days',73]].map(c=>`<div class="rkr" style="grid-template-columns:1fr 46px"><div><div class="rknm">${c[0]}</div><div class="st mono" style="color:var(--muted);font-size:10.5px">${c[1]} consecutive</div></div><span class="rkp" style="color:var(--fail-ink)">${c[2]}%</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============ HOD VIEW ============ */
+function hodView(){
+  return `
+  <div class="viewtitle">IT Department</div>
+  <div class="viewsub">School of Computing Sciences · 3 sections · 184 students</div>
+  <div class="hero hod">
+    <div class="hcard lead"><div class="hl">Department attendance · today</div>
+      <div class="hbig r">73.4<small>%</small></div>
+      <div class="hmeta"><span class="delta down">▼ 1.1</span> vs yesterday · 7th of 9 departments</div>
+    </div>
+    <div class="hcard"><div class="hl">Sections below 75%</div><div class="hbig r">2<small>/3</small></div><div class="statline"><span class="tag r">Sec A 74</span><span class="tag r">Sec B 73</span></div></div>
+    <div class="hcard"><div class="hl">Reporting status</div><div class="hbig w">2<small>/3</small></div><div class="hmeta" style="color:var(--warn-ink)">Sec C not reported yet</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+    <div class="panel"><div class="ph"><div><h3>My sections today</h3></div><div class="sub">click for class detail</div></div>
+      <div class="rk">
+        ${[['Section A',74,'r','38 present · 13 absent'],['Section B',73,'r','45 present · 17 absent'],['Section C',null,'n','not reported']].map((s,i)=>`<div class="rkr" style="grid-template-columns:1fr 80px 54px"><div><div class="rknm">${s[0]}</div><div class="st mono" style="color:var(--muted);font-size:10.5px">${s[3]}</div></div><div class="rmini">${s[1]?`<i style="width:${s[1]}%;background:var(--${s[2]==='g'?'pass':'fail'})"></i>`:''}</div><span class="rkp" style="color:${s[1]?`var(--${s[2]==='g'?'pass':'fail'}-ink)`:'var(--faint)'}">${s[1]?s[1]+'%':'—'}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="panel"><div class="ph"><div><h3>Reporting compliance</h3></div><div class="sub">9:42 AM</div></div>
+      <div class="comp-row"><span class="cl"><span class="sdot g"></span>Section A — Prof. Kumar</span><span class="cstat ok">In · 9:05</span></div>
+      <div class="comp-row"><span class="cl"><span class="sdot g"></span>Section B — Prof. Devi</span><span class="cstat ok">In · 9:11</span></div>
+      <div class="comp-row"><span class="cl"><span class="sdot r"></span>Section C — Prof. Rao</span><span class="cstat wait">Pending</span></div>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:1.2fr 1fr">
+    <div class="panel"><div class="ph"><div><h3>IT vs other departments</h3></div><div class="sub">where my department ranks · marker = 75%</div></div>
+      <div class="cmp">
+        ${[['AI&DS',89.7,'g',0],['CSE',79.8,'g',0],['CSE-Civil',77.1,'g',0],['IT',73.4,'me',1],['ECE',70.3,'r',0],['MECH',67.5,'r',0]].map(d=>`<div class="cmpr ${d[3]?'me':''}"><div class="cnm">${d[0]} ${d[3]?'<span class="meflag">YOU</span>':''}</div><div class="ctk"><div class="cfl ${d[2]}" style="width:${d[1]}%"></div><div class="cth" style="left:75%"></div></div><div class="cvv">${d[1]}</div></div>`).join('')}
+      </div>
+    </div>
+    <div class="panel"><div class="ph"><div><h3>Department trend</h3></div><div class="sub">20 working days</div></div>${wideSpark(trends.itDept,'h','var(--fail)')}</div>
+  </div>`;
+}
+
+/* ============ TEACHER VIEW ============ */
+function teacherView(){
+  const p=79,present=49,absent=13,str=62,R=46,C=2*Math.PI*R,off=C*(1-p/100);
+  return `
+  <div class="viewtitle">CSE · Section A</div>
+  <div class="viewsub">Good morning, Prof. Kumar · first-hour attendance for Wed, 15 Jan</div>
+  <div class="hero teacher">
+    <div class="hcard lead"><div class="hl">Your class · today</div>
+      <div class="ring-wrap" style="margin-top:4px">
+        <svg width="108" height="108" viewBox="0 0 108 108"><circle cx="54" cy="54" r="${R}" fill="none" stroke="var(--surface-2)" stroke-width="11"/><circle cx="54" cy="54" r="${R}" fill="none" stroke="var(--pass)" stroke-width="11" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}" transform="rotate(-90 54 54)"/><text x="54" y="50" text-anchor="middle" font-family="Space Grotesk" font-size="24" font-weight="600" fill="var(--pass)">${p}%</text><text x="54" y="66" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">above line</text></svg>
+        <div class="ring-meta"><div class="rm-big">${present} present · ${absent} absent</div><div class="rm-l">of ${str} students · 9:05 AM</div><div class="statline"><span class="tag g">Above 75%</span></div></div>
+      </div>
+    </div>
+    <div class="hcard"><div class="hl">Cumulative · this term</div><div class="hbig g">81<small>%</small></div><div class="hmeta">healthy margin above 75%</div></div>
+    <div class="hcard"><div class="hl">Your other section</div><div class="hbig g">78<small>%</small></div><div class="hmeta">CSE · Section C — reported</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1.1fr">
+    <div class="entry"><h3>Mark today's absentees</h3><div class="esub">Type roll numbers · present is filled in automatically</div>
+      <div class="chips">
+        <div class="achip">07 <span>×</span></div><div class="achip">14 <span>×</span></div><div class="achip">22 <span>×</span></div>
+        <div class="achip">31 <span>×</span></div><div class="achip">38 <span>×</span></div>
+      </div>
+      <div class="entry-in"><input value="" placeholder="Add roll number…"><button class="ebtn">Add</button></div>
+      <div class="erow"><button class="ebtn" style="flex:1">✓ Submit attendance</button><button class="ebtn ghost">No session today</button></div>
+    </div>
+    <div class="panel"><div class="ph"><div><h3>Your class vs the benchmark</h3></div><div class="sub">today</div></div>
+      <div class="cmp" style="margin-bottom:18px">
+        <div class="cmpr me" style="cursor:default"><div class="cnm">Your class · Sec A <span class="meflag">YOU</span></div><div class="ctk"><div class="cfl me" style="width:79%"></div><div class="cth" style="left:75%"></div></div><div class="cvv">79</div></div>
+        <div class="cmpr" style="cursor:default"><div class="cnm">CSE dept average</div><div class="ctk"><div class="cfl g" style="width:80%"></div><div class="cth" style="left:75%"></div></div><div class="cvv">80</div></div>
+        <div class="cmpr" style="cursor:default"><div class="cnm">Pass threshold</div><div class="ctk"><div class="cfl" style="width:75%;background:var(--ink2)"></div></div><div class="cvv">75</div></div>
+      </div>
+      <div class="ph"><div><h3 style="font-size:13px">Your class · 20-day trend</h3></div></div>
+      ${wideSpark(trends.cseA,'t','var(--pass)')}
+    </div>
+  </div>`;
+}
+
+/* ============ ROUTER ============ */
+const views={dean:deanView,hod:hodView,teacher:teacherView};
+const rails={dean:railDean,hod:railHod,teacher:railTeacher};
+const crumbs={dean:'<span>⌂</span> / <b>College</b>',hod:'<span>⌂</span> / Computing / <b>IT Dept</b>',teacher:'<span>⌂</span> / CSE / <b>Section A</b>'};
+function setRole(r){
+  document.getElementById('view').innerHTML=views[r]();
+  document.getElementById('rail').innerHTML=rails[r];
+  document.getElementById('crumb').innerHTML=crumbs[r];
+  document.querySelectorAll('#roleseg button').forEach(b=>b.classList.toggle('on',b.dataset.r===r));
+}
+document.getElementById('roleseg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setRole(b.dataset.r)});
+setRole('dean');
+</script>
+</body>
+</html>

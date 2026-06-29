@@ -1,0 +1,91 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class", '[data-theme="dark"]'],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        canvas: "var(--canvas)",
+        surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        panel: "var(--panel)",
+        ink: "var(--ink)",
+        "ink-2": "var(--ink-2)",
+        muted: "var(--muted)",
+        faint: "var(--faint)",
+        line: "var(--line)",
+        "line-2": "var(--line-2)",
+        chrome: "var(--chrome)",
+        "chrome-2": "var(--chrome-2)",
+        "chrome-ink": "var(--chrome-ink)",
+        "chrome-muted": "var(--chrome-muted)",
+        "chrome-line": "var(--chrome-line)",
+        accent: "var(--accent)",
+        "accent-soft": "var(--accent-soft)",
+        "accent-ink": "var(--accent-ink)",
+        pass: "var(--pass)",
+        "pass-bg": "var(--pass-bg)",
+        "pass-cell": "var(--pass-cell)",
+        "pass-ink": "var(--pass-ink)",
+        fail: "var(--fail)",
+        "fail-bg": "var(--fail-bg)",
+        "fail-cell": "var(--fail-cell)",
+        "fail-ink": "var(--fail-ink)",
+        warn: "var(--warn)",
+        "warn-bg": "var(--warn-bg)",
+        "warn-ink": "var(--warn-ink)",
+        none: "var(--none)",
+        "none-ink": "var(--none-ink)",
+      },
+      fontFamily: {
+        display: ["Space Grotesk", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "SF Mono", "monospace"],
+        data: ["JetBrains Mono", "SF Mono", "monospace"],
+      },
+      borderRadius: {
+        lg: "var(--radius-lg)",
+        md: "var(--radius)",
+        sm: "calc(var(--radius) - 2px)",
+      },
+      boxShadow: {
+        sm: "var(--panel-shadow)",
+        DEFAULT: "var(--panel-shadow)",
+        lg: "var(--panel-shadow-lg)",
+      },
+      animation: {
+        "shimmer": "shimmer 2s linear infinite",
+        "count-up": "count-up 600ms ease-out",
+        "draw-line": "draw-line 800ms ease-out forwards",
+        "fade-in": "fade-in 300ms ease-out",
+        "slide-up": "slide-up 300ms ease-out",
+      },
+      keyframes: {
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
+        "count-up": {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "draw-line": {
+          "0%": { strokeDashoffset: "1" },
+          "100%": { strokeDashoffset: "0" },
+        },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        "slide-up": {
+          "0%": { opacity: "0", transform: "translateY(20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+      },
+    },
+  },
+  plugins: [],
+}
