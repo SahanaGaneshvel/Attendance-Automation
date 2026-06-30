@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@/store/appStore'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useCountUp } from '@/hooks/useCountUp'
 import {
   getSectionById,
   getDailyClassAttendance,
@@ -8,119 +11,12 @@ import {
   submitManualAttendance,
 } from '@/data/store'
 import { cn } from '@/lib/utils'
-
-// Ring chart component
-function RingChart({
-  percentage,
-  size = 140,
-  strokeWidth = 14,
-  threshold = 75,
-}: {
-  percentage: number
-  size?: number
-  strokeWidth?: number
-  threshold?: number
-}) {
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (percentage / 100) * circumference
-
-  const isPass = percentage >= threshold
-  const color = isPass ? 'var(--pass)' : 'var(--fail)'
-  const bgColor = isPass ? 'var(--pass-bg)' : 'var(--fail-bg)'
-
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        {/* Background circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={bgColor}
-          strokeWidth={strokeWidth}
-        />
-        {/* Progress circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 0.5s ease-out' }}
-        />
-      </svg>
-      {/* Center text */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span
-          className="font-display font-semibold"
-          style={{ fontSize: size * 0.22, color, letterSpacing: '-1px' }}
-        >
-          {Math.round(percentage)}%
-        </span>
-        <span className="text-[10px] text-muted uppercase tracking-wide">Today</span>
-      </div>
-    </div>
-  )
-}
-
-// Simple sparkline for 20-day trend
-function TrendSparkline({ data, threshold = 75 }: { data: number[]; threshold?: number }) {
-  const height = 50
-  const width = 200
-  const padding = 2
-
-  const chartWidth = width - padding * 2
-  const chartHeight = height - padding * 2
-
-  const points = data.map((value, i) => {
-    const x = padding + (i / (data.length - 1)) * chartWidth
-    const y = padding + chartHeight - (value / 100) * chartHeight
-    return { x, y, value }
-  })
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-  const thresholdY = padding + chartHeight - (threshold / 100) * chartHeight
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <line
-        x1={padding}
-        y1={thresholdY}
-        x2={width - padding}
-        y2={thresholdY}
-        stroke="var(--line-2)"
-        strokeWidth={1}
-        strokeDasharray="3,3"
-      />
-      <path
-        d={pathD}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Latest point highlighted */}
-      {points.length > 0 && (
-        <circle
-          cx={points[points.length - 1].x}
-          cy={points[points.length - 1].y}
-          r={4}
-          fill={points[points.length - 1].value >= threshold ? 'var(--pass)' : 'var(--fail)'}
-        />
-      )}
-    </svg>
-  )
-}
+import { SPRING, TIMING, staggerContainer, panelVariants, chipVariants } from '@/lib/motion'
+import { AnimatedRing, BulletBars, StreakStrip } from '../AnimatedWidgets'
 
 export function TeacherView() {
   const { selectedDate, threshold, showToast } = useAppStore()
+  const prefersReducedMotion = useReducedMotion()
 
   // Mock teacher's assigned class (in real app, comes from auth)
   const myClassId = 'cse-a'
@@ -138,17 +34,45 @@ export function TeacherView() {
   )
 
   // Get department stats for comparison
-  const deptStats = useMemo(() => getDepartmentDailyStats(myDeptId, selectedDate), [selectedDate])
+  const deptStats = useMemo(
+    () => getDepartmentDailyStats(myDeptId, selectedDate),
+    [selectedDate]
+  )
 
-  // Get 20-day trend
+  // Get 20-day trend for streak strip
   const trendData = useMemo(() => {
-    return getSectionTrend(myClassId).slice(-20).map((t) => t.percentage)
+    return getSectionTrend(myClassId).slice(-20).map((t) => ({
+      date: t.date,
+      percentage: t.percentage,
+    }))
   }, [])
 
   const strength = myClass?.strength ?? 60
   const present = classAttendance?.present ?? strength - absentRolls.length
-  const percentage = classAttendance?.percentage ?? ((strength - absentRolls.length) / strength) * 100
+  const percentage =
+    classAttendance?.percentage ?? ((strength - absentRolls.length) / strength) * 100
   const submitted = classAttendance !== null
+
+  // Benchmark comparison data for bullet bars
+  const benchmarks = useMemo(
+    () => [
+      { id: 'you', name: 'Your Class', value: percentage, isMe: true },
+      { id: 'dept', name: 'Dept Avg', value: deptStats?.averagePercentage ?? 0 },
+      { id: 'threshold', name: 'Threshold', value: threshold },
+    ],
+    [percentage, deptStats, threshold]
+  )
+
+  // Quick stats
+  const quickStats = useMemo(() => {
+    const values = trendData.map((d) => d.percentage)
+    return {
+      best: Math.max(...values),
+      worst: Math.min(...values),
+      belowDays: values.filter((v) => v < threshold).length,
+      average: values.reduce((a, b) => a + b, 0) / values.length,
+    }
+  }, [trendData, threshold])
 
   const handleAddRoll = () => {
     const roll = parseInt(inputValue.trim(), 10)
@@ -182,87 +106,132 @@ export function TeacherView() {
     }
   }
 
-  // Benchmark comparison data
-  const benchmarks = [
-    { label: 'Your Class', value: percentage, isMe: true },
-    { label: 'Dept Avg', value: deptStats?.averagePercentage ?? 0, isMe: false },
-    { label: 'Threshold', value: threshold, isMe: false, isThreshold: true },
-  ]
-
   return (
-    <div className="space-y-5">
+    <motion.div
+      className="space-y-5"
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+    >
       {/* Header */}
-      <div>
+      <motion.div variants={panelVariants}>
         <h1 className="view-title">{myClass?.name ?? 'My Class'}</h1>
         <p className="view-subtitle">Teacher Dashboard · {selectedDate}</p>
-      </div>
+      </motion.div>
 
       {/* Hero Cards */}
-      <div className="hero-grid teacher">
-        {/* Lead card with ring */}
-        <div className="hero-card lead">
+      <motion.div className="hero-grid teacher" variants={panelVariants}>
+        {/* Lead card with animated ring */}
+        <motion.div
+          className="hero-card lead"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Class Attendance</div>
           <div className="ring-wrap">
-            <RingChart percentage={percentage} threshold={threshold} />
+            <AnimatedRing
+              percentage={percentage}
+              threshold={threshold}
+              size={140}
+              label="Today"
+            />
             <div className="ring-meta">
-              <div className="rm-big">{present} / {strength}</div>
+              <div className="rm-big">
+                <AnimatedCount value={present} /> / {strength}
+              </div>
               <div className="rm-label">Present today</div>
               {submitted && (
-                <div className="stat-tag pass mt-2">Submitted</div>
+                <motion.div
+                  className="stat-tag pass mt-2"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={SPRING.snappy}
+                >
+                  Submitted
+                </motion.div>
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Cumulative this term */}
-        <div className="hero-card">
+        {/* Term Average */}
+        <motion.div
+          className="hero-card"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Term Average</div>
-          <div className="hero-big">
-            {(trendData.reduce((a, b) => a + b, 0) / trendData.length || 0).toFixed(1)}<small>%</small>
+          <div className={cn('hero-big', quickStats.average >= threshold ? 'pass' : 'fail')}>
+            <AnimatedDecimal value={quickStats.average} /><small>%</small>
           </div>
-          <div className="hero-meta">
-            Last {trendData.length} days
-          </div>
-        </div>
+          <div className="hero-meta">Last {trendData.length} days</div>
+        </motion.div>
 
         {/* Absent count */}
-        <div className="hero-card">
+        <motion.div
+          className="hero-card"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Absent Today</div>
-          <div className={cn(
-            'hero-big',
-            (strength - present) > (strength * 0.25) ? 'fail' : ''
-          )}>
-            {strength - present}
+          <div
+            className={cn(
+              'hero-big',
+              strength - present > strength * 0.25 ? 'fail' : ''
+            )}
+          >
+            <AnimatedCount value={strength - present} />
           </div>
-          <div className="hero-meta">
-            students
-          </div>
-        </div>
-      </div>
+          <div className="hero-meta">students</div>
+        </motion.div>
+      </motion.div>
 
       {/* Main content grid */}
       <div className="content-grid" style={{ gridTemplateColumns: '1fr 360px' }}>
         {/* Entry Panel - Action first! */}
-        <div className="entry-panel">
+        <motion.div className="entry-panel" variants={panelVariants}>
           <h3>Mark Absentees</h3>
           <p className="entry-subtitle">
             Enter roll numbers of absent students · {myClass?.name} ({strength} students)
           </p>
 
-          {/* Chips container */}
+          {/* Animated chips container */}
           <div className="chips-container">
-            {absentRolls.length === 0 ? (
-              <span className="text-faint text-sm">No absentees marked yet</span>
-            ) : (
-              absentRolls.map((roll) => (
-                <div key={roll} className="absent-chip">
-                  {roll}
-                  <button onClick={() => handleRemoveRoll(roll)} title="Remove">
-                    ×
-                  </button>
-                </div>
-              ))
-            )}
+            <AnimatePresence mode="popLayout">
+              {absentRolls.length === 0 ? (
+                <motion.span
+                  key="empty"
+                  className="text-faint text-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  No absentees marked yet
+                </motion.span>
+              ) : (
+                absentRolls.map((roll) => (
+                  <motion.div
+                    key={roll}
+                    className="absent-chip"
+                    variants={chipVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    layout
+                  >
+                    {roll}
+                    <motion.button
+                      onClick={() => handleRemoveRoll(roll)}
+                      title="Remove"
+                      whileHover={{ scale: 1.2 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      ×
+                    </motion.button>
+                  </motion.div>
+                ))
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Input row */}
@@ -276,75 +245,63 @@ export function TeacherView() {
               onKeyPress={handleKeyPress}
               disabled={submitted}
             />
-            <button
+            <motion.button
               className="entry-btn"
               onClick={handleAddRoll}
               disabled={submitted || !inputValue.trim()}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
               Add
-            </button>
+            </motion.button>
           </div>
 
           {/* Action buttons */}
           <div className="entry-actions">
-            <button
+            <motion.button
               className="entry-btn"
               onClick={handleSubmit}
               disabled={submitted}
+              whileHover={submitted ? {} : { scale: 1.02 }}
+              whileTap={submitted ? {} : { scale: 0.98 }}
             >
               {submitted ? 'Submitted' : 'Submit Attendance'}
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               className="entry-btn ghost"
               onClick={handleNoSession}
               disabled={submitted}
+              whileHover={submitted ? {} : { scale: 1.02 }}
+              whileTap={submitted ? {} : { scale: 0.98 }}
             >
               No Session Today
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Right column */}
-        <div className="space-y-4">
-          {/* Benchmark Comparison */}
+        <motion.div className="space-y-4" variants={panelVariants}>
+          {/* Benchmark Comparison with bullet bars */}
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Benchmark</span>
               <span className="panel-subtitle">vs department & threshold</span>
             </div>
-            <div className="comparison-list">
-              {benchmarks.map((item, index) => (
-                <div key={index} className={cn('comparison-row', item.isMe && 'me')}>
-                  <div className="comparison-name">
-                    {item.label}
-                    {item.isMe && <span className="me-flag">YOU</span>}
-                  </div>
-                  <div className="comparison-track">
-                    <div
-                      className={cn(
-                        'comparison-fill',
-                        item.isMe ? 'me' : item.value >= threshold ? 'pass' : 'fail'
-                      )}
-                      style={{ width: `${item.value}%` }}
-                    />
-                    {!item.isThreshold && (
-                      <div className="comparison-threshold" style={{ left: `${threshold}%` }} />
-                    )}
-                  </div>
-                  <span className="comparison-value">{Math.round(item.value)}</span>
-                </div>
-              ))}
-            </div>
+            <BulletBars data={benchmarks} threshold={threshold} />
           </div>
 
-          {/* 20-Day Trend */}
+          {/* 20-Day Streak Strip */}
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">20-Day Trend</span>
               <span className="panel-subtitle">{myClass?.name}</span>
             </div>
             <div className="mt-2">
-              <TrendSparkline data={trendData} threshold={threshold} />
+              <StreakStrip data={trendData} threshold={threshold} />
+            </div>
+            {/* Animated sparkline below */}
+            <div className="mt-4">
+              <AnimatedTrendLine data={trendData.map((d) => d.percentage)} threshold={threshold} />
             </div>
           </div>
 
@@ -354,32 +311,130 @@ export function TeacherView() {
               <span className="panel-title">Quick Stats</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-surface-2 rounded-lg">
+              <motion.div
+                className="p-3 bg-surface-2 rounded-lg"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0 }}
+              >
                 <div className="text-xs text-muted uppercase">Best Day</div>
                 <div className="font-data font-semibold text-pass">
-                  {Math.max(...trendData).toFixed(0)}%
+                  <AnimatedCount value={quickStats.best} />%
                 </div>
-              </div>
-              <div className="p-3 bg-surface-2 rounded-lg">
+              </motion.div>
+              <motion.div
+                className="p-3 bg-surface-2 rounded-lg"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+              >
                 <div className="text-xs text-muted uppercase">Worst Day</div>
                 <div className="font-data font-semibold text-fail">
-                  {Math.min(...trendData).toFixed(0)}%
+                  <AnimatedCount value={quickStats.worst} />%
                 </div>
-              </div>
-              <div className="p-3 bg-surface-2 rounded-lg">
-                <div className="text-xs text-muted uppercase">Days Below 75%</div>
+              </motion.div>
+              <motion.div
+                className="p-3 bg-surface-2 rounded-lg"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <div className="text-xs text-muted uppercase">Days Below {threshold}%</div>
                 <div className="font-data font-semibold">
-                  {trendData.filter((d) => d < threshold).length}
+                  <AnimatedCount value={quickStats.belowDays} />
                 </div>
-              </div>
-              <div className="p-3 bg-surface-2 rounded-lg">
+              </motion.div>
+              <motion.div
+                className="p-3 bg-surface-2 rounded-lg"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+              >
                 <div className="text-xs text-muted uppercase">Class Strength</div>
                 <div className="font-data font-semibold">{strength}</div>
-              </div>
+              </motion.div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
+  )
+}
+
+// Animated count (integer)
+function AnimatedCount({ value }: { value: number }) {
+  const displayValue = useCountUp(value, { duration: 500, decimals: 0 })
+  return <>{Math.round(displayValue)}</>
+}
+
+// Animated decimal
+function AnimatedDecimal({ value }: { value: number }) {
+  const displayValue = useCountUp(value, { duration: 500, decimals: 1 })
+  return <>{displayValue.toFixed(1)}</>
+}
+
+// Animated trend line
+function AnimatedTrendLine({
+  data,
+  threshold,
+}: {
+  data: number[]
+  threshold: number
+}) {
+  const prefersReducedMotion = useReducedMotion()
+  const width = 280
+  const height = 50
+  const padding = 2
+
+  const chartWidth = width - padding * 2
+  const chartHeight = height - padding * 2
+
+  const points = data.map((value, i) => ({
+    x: padding + (i / (data.length - 1)) * chartWidth,
+    y: padding + chartHeight - (value / 100) * chartHeight,
+  }))
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  const thresholdY = padding + chartHeight - (threshold / 100) * chartHeight
+
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <line
+        x1={padding}
+        y1={thresholdY}
+        x2={width - padding}
+        y2={thresholdY}
+        stroke="var(--line-2)"
+        strokeWidth={1}
+        strokeDasharray="3,3"
+      />
+      <motion.path
+        d={pathD}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{
+          duration: prefersReducedMotion ? 0 : 0.8,
+          ease: 'easeOut',
+        }}
+      />
+      {/* Latest point */}
+      <motion.circle
+        cx={points[points.length - 1]?.x}
+        cy={points[points.length - 1]?.y}
+        r={4}
+        fill={data[data.length - 1] >= threshold ? 'var(--pass)' : 'var(--fail)'}
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{
+          delay: prefersReducedMotion ? 0 : 0.7,
+          ...SPRING.snappy,
+        }}
+      />
+    </svg>
   )
 }

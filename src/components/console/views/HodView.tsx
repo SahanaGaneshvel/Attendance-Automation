@@ -1,74 +1,23 @@
 import { useMemo } from 'react'
+import { motion } from 'motion/react'
 import { useAppStore } from '@/store/appStore'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useCountUp } from '@/hooks/useCountUp'
 import {
   getDepartmentById,
   getSectionsByDepartment,
   getDailyClassAttendance,
   getDepartmentDailyStats,
   getAllDepartmentStats,
-  getDepartmentTrend,
 } from '@/data/store'
 import { cn } from '@/lib/utils'
-
-// Simple trend chart
-function TrendChart({ data, threshold = 75 }: { data: Array<{ date: string; percentage: number }>; threshold?: number }) {
-  const height = 80
-  const width = 280
-  const padding = { top: 10, right: 10, bottom: 20, left: 30 }
-  const chartWidth = width - padding.left - padding.right
-  const chartHeight = height - padding.top - padding.bottom
-
-  const points = data.map((d, i) => {
-    const x = padding.left + (i / (data.length - 1)) * chartWidth
-    const y = padding.top + chartHeight - (d.percentage / 100) * chartHeight
-    return { x, y, value: d.percentage, date: d.date }
-  })
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-  const thresholdY = padding.top + chartHeight - (threshold / 100) * chartHeight
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      {/* Threshold line */}
-      <line
-        x1={padding.left}
-        y1={thresholdY}
-        x2={width - padding.right}
-        y2={thresholdY}
-        stroke="var(--line-2)"
-        strokeWidth={1}
-        strokeDasharray="4,4"
-      />
-      <text x={padding.left - 5} y={thresholdY + 3} fontSize={9} fill="var(--muted)" textAnchor="end">
-        {threshold}%
-      </text>
-
-      {/* Line */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-
-      {/* Points */}
-      {points.map((p, i) => (
-        <circle
-          key={i}
-          cx={p.x}
-          cy={p.y}
-          r={3}
-          fill={p.value >= threshold ? 'var(--pass)' : 'var(--fail)'}
-        />
-      ))}
-    </svg>
-  )
-}
+import { SPRING, TIMING, staggerContainer, panelVariants } from '@/lib/motion'
+import { BulletBars, Slopegraph, SmallMultiples } from '../AnimatedWidgets'
+import { AlertsPanel } from '../AlertsPanel'
 
 export function HodView() {
   const { selectedDate, threshold } = useAppStore()
+  const prefersReducedMotion = useReducedMotion()
 
   // Mock HOD's department (in real app, comes from auth)
   const myDeptId = 'cse'
@@ -76,27 +25,34 @@ export function HodView() {
   const mySections = getSectionsByDepartment(myDeptId)
   const myStats = getDepartmentDailyStats(myDeptId, selectedDate)
 
-  // Get trend data
-  const trendData = useMemo(() => getDepartmentTrend(myDeptId).slice(-10), [])
 
-  // Peer comparison
+  // Peer comparison for bullet bars
   const peerComparison = useMemo(() => {
     const allStats = getAllDepartmentStats(selectedDate)
     return [...allStats]
       .sort((a, b) => b.averagePercentage - a.averagePercentage)
       .map((stat, index) => ({
-        ...stat,
+        id: stat.departmentId,
+        name: getDepartmentById(stat.departmentId)?.code ?? stat.departmentId.toUpperCase(),
+        value: stat.averagePercentage,
         rank: index + 1,
         isMe: stat.departmentId === myDeptId,
-        name: getDepartmentById(stat.departmentId)?.name ?? stat.departmentId,
-        code: getDepartmentById(stat.departmentId)?.code ?? stat.departmentId.toUpperCase(),
       }))
   }, [selectedDate])
 
-  // Sections with stats
+  // Sections with stats for small multiples
   const sectionStats = useMemo(() => {
     return mySections.map((section) => {
       const attendance = getDailyClassAttendance(section.id, selectedDate)
+      // Get last 10 days for sparkline
+      const trend = Array.from({ length: 10 }, (_, i) => {
+        const d = new Date(selectedDate)
+        d.setDate(d.getDate() - (9 - i))
+        const dateStr = d.toISOString().split('T')[0]
+        const att = getDailyClassAttendance(section.id, dateStr)
+        return att?.percentage ?? 75 + Math.random() * 15 // Mock some variation
+      })
+
       return {
         id: section.id,
         name: section.name,
@@ -106,81 +62,114 @@ export function HodView() {
         present: attendance?.present ?? 0,
         absent: attendance?.absent ?? 0,
         reported: attendance !== null,
-        // Mock timestamp - in real app this would come from the record
         reportedAt: attendance ? '08:45' : null,
+        values: trend,
       }
     })
   }, [mySections, selectedDate])
 
+  // Slopegraph data (week-over-week)
+  const slopegraphData = useMemo(() => {
+    return mySections.slice(0, 6).map((section) => ({
+      id: section.id,
+      name: section.name.replace('Section ', ''),
+      before: 70 + Math.random() * 20, // Mock last week
+      after: sectionStats.find((s) => s.id === section.id)?.percentage ?? 75,
+    }))
+  }, [mySections, sectionStats])
+
   const pendingCount = sectionStats.filter((s) => !s.reported).length
-  const belowThresholdCount = sectionStats.filter((s) => s.percentage < threshold && s.reported).length
+  const belowThresholdCount = sectionStats.filter(
+    (s) => s.percentage < threshold && s.reported
+  ).length
 
   const myRank = peerComparison.find((d) => d.isMe)?.rank ?? 0
 
   return (
-    <div className="space-y-5">
+    <motion.div
+      className="space-y-5"
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+    >
       {/* Header */}
-      <div>
+      <motion.div variants={panelVariants}>
         <h1 className="view-title">{myDept?.name ?? 'Department'}</h1>
         <p className="view-subtitle">HOD Dashboard · {selectedDate}</p>
-      </div>
+      </motion.div>
 
       {/* Hero Cards */}
-      <div className="hero-grid hod">
+      <motion.div className="hero-grid hod" variants={panelVariants}>
         {/* Lead card - Department attendance */}
-        <div className="hero-card lead">
+        <motion.div
+          className="hero-card lead"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Department Attendance</div>
-          <div className={cn(
-            'hero-big',
-            (myStats?.averagePercentage ?? 0) >= threshold ? 'pass' : 'fail'
-          )}>
-            {(myStats?.averagePercentage ?? 0).toFixed(1)}<small>%</small>
-          </div>
+          <AnimatedHeroNumber
+            value={myStats?.averagePercentage ?? 0}
+            threshold={threshold}
+          />
           <div className="hero-meta">
-            {myStats?.totalPresent ?? 0} / {myStats?.totalStrength ?? 0} students
+            <AnimatedCount value={myStats?.totalPresent ?? 0} /> / {myStats?.totalStrength ?? 0} students
           </div>
           <div className="stat-tags">
-            <span className="stat-tag pass">Rank #{myRank}</span>
+            <motion.span
+              className="stat-tag pass"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={SPRING.snappy}
+            >
+              Rank #{myRank}
+            </motion.span>
             {belowThresholdCount > 0 && (
-              <span className="stat-tag fail">{belowThresholdCount} below 75%</span>
+              <motion.span
+                className="stat-tag fail"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ ...SPRING.snappy, delay: 0.1 }}
+              >
+                {belowThresholdCount} below {threshold}%
+              </motion.span>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Sections below threshold */}
-        <div className="hero-card">
+        <motion.div
+          className="hero-card"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Below {threshold}%</div>
-          <div className={cn(
-            'hero-big',
-            belowThresholdCount > 0 ? 'fail' : ''
-          )}>
-            {belowThresholdCount}
+          <div className={cn('hero-big', belowThresholdCount > 0 ? 'fail' : '')}>
+            <AnimatedCount value={belowThresholdCount} />
           </div>
-          <div className="hero-meta">
-            of {mySections.length} sections
-          </div>
-        </div>
+          <div className="hero-meta">of {mySections.length} sections</div>
+        </motion.div>
 
         {/* Reporting compliance */}
-        <div className="hero-card">
+        <motion.div
+          className="hero-card"
+          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+          transition={{ duration: TIMING.fast }}
+        >
           <div className="hero-card-label">Reporting Status</div>
-          <div className={cn(
-            'hero-big',
-            pendingCount > 0 ? 'warn' : 'pass'
-          )}>
-            {sectionStats.length - pendingCount}/{sectionStats.length}
+          <div className={cn('hero-big', pendingCount > 0 ? 'warn' : 'pass')}>
+            <AnimatedCount value={sectionStats.length - pendingCount} />/{sectionStats.length}
           </div>
           <div className="hero-meta">
             {pendingCount === 0 ? 'All reported' : `${pendingCount} pending`}
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Main content grid */}
       <div className="content-grid" style={{ gridTemplateColumns: '1fr 380px' }}>
         {/* Left column */}
-        <div className="space-y-4">
-          {/* Sections List */}
+        <motion.div className="space-y-4" variants={panelVariants}>
+          {/* Sections Table with animations */}
           <div className="panel no-pad">
             <div className="panel-header in-pad">
               <span className="panel-title">My Sections Today</span>
@@ -198,8 +187,16 @@ export function HodView() {
                 </tr>
               </thead>
               <tbody>
-                {sectionStats.map((section) => (
-                  <tr key={section.id}>
+                {sectionStats.map((section, index) => (
+                  <motion.tr
+                    key={section.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      delay: prefersReducedMotion ? 0 : index * TIMING.stagger * 2,
+                      ...SPRING.smooth,
+                    }}
+                  >
                     <td>
                       <div className="matrix-row-name">{section.name}</div>
                     </td>
@@ -210,94 +207,112 @@ export function HodView() {
                     </td>
                     <td>
                       {section.reported ? (
-                        <div className={cn(
-                          'matrix-cell',
-                          section.percentage >= threshold ? 'pass' : 'fail'
-                        )}>
+                        <motion.div
+                          className={cn(
+                            'matrix-cell',
+                            section.percentage >= threshold ? 'pass' : 'fail'
+                          )}
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          whileHover={{ y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
+                          transition={SPRING.snappy}
+                        >
                           {Math.round(section.percentage)}
-                        </div>
+                        </motion.div>
                       ) : (
                         <div className="matrix-cell none">—</div>
                       )}
                     </td>
                     <td className="text-center">
                       {section.reported ? (
-                        <span className="compliance-status ok">{section.reportedAt}</span>
+                        <motion.span
+                          className="compliance-status ok"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={SPRING.snappy}
+                        >
+                          {section.reportedAt}
+                        </motion.span>
                       ) : (
                         <span className="compliance-status pending">Pending</span>
                       )}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Department Trend */}
+          {/* Section Sparklines (Small Multiples) */}
           <div className="panel">
             <div className="panel-header">
-              <span className="panel-title">10-Day Trend</span>
+              <span className="panel-title">Section Trends</span>
+              <span className="panel-subtitle">Last 10 days</span>
             </div>
-            <TrendChart data={trendData} threshold={threshold} />
+            <SmallMultiples
+              data={sectionStats.map((s) => ({
+                id: s.id,
+                name: s.name,
+                values: s.values,
+              }))}
+              threshold={threshold}
+            />
           </div>
-        </div>
+        </motion.div>
 
         {/* Right column */}
-        <div className="space-y-4">
-          {/* Peer Comparison */}
+        <motion.div className="space-y-4" variants={panelVariants}>
+          {/* Alerts */}
+          <AlertsPanel />
+
+          {/* Peer Comparison with bullet bars */}
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Peer Departments</span>
               <span className="panel-subtitle">Today's ranking</span>
             </div>
-            <div className="comparison-list">
-              {peerComparison.map((dept) => (
-                <div key={dept.departmentId} className={cn('comparison-row', dept.isMe && 'me')}>
-                  <div className="comparison-name">
-                    {dept.code}
-                    {dept.isMe && <span className="me-flag">YOU</span>}
-                    <span className="comparison-tag">#{dept.rank}</span>
-                  </div>
-                  <div className="comparison-track">
-                    <div
-                      className={cn(
-                        'comparison-fill',
-                        dept.isMe ? 'me' : dept.averagePercentage >= threshold ? 'pass' : 'fail'
-                      )}
-                      style={{ width: `${dept.averagePercentage}%` }}
-                    />
-                    <div className="comparison-threshold" style={{ left: `${threshold}%` }} />
-                  </div>
-                  <span className="comparison-value">{Math.round(dept.averagePercentage)}</span>
-                </div>
-              ))}
-            </div>
+            <BulletBars data={peerComparison} threshold={threshold} />
           </div>
 
-          {/* Reporting Compliance */}
+          {/* Week-over-week Slopegraph */}
           <div className="panel">
             <div className="panel-header">
-              <span className="panel-title">Reporting Compliance</span>
-              <span className="panel-subtitle">First hour status</span>
+              <span className="panel-title">Week Comparison</span>
+              <span className="panel-subtitle">Section movement</span>
             </div>
-            <div>
-              {sectionStats.map((section) => (
-                <div key={section.id} className="compliance-row">
-                  <div className="compliance-label">
-                    {section.name}
-                    <span className="text-xs text-muted">· {section.advisor}</span>
-                  </div>
-                  {section.reported ? (
-                    <span className="compliance-status ok">{section.reportedAt}</span>
-                  ) : (
-                    <span className="compliance-status pending">Pending</span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <Slopegraph
+              data={slopegraphData}
+              beforeLabel="Last Week"
+              afterLabel="This Week"
+              threshold={threshold}
+            />
           </div>
-        </div>
+        </motion.div>
       </div>
+    </motion.div>
+  )
+}
+
+// Animated hero number component
+function AnimatedHeroNumber({
+  value,
+  threshold,
+}: {
+  value: number
+  threshold: number
+}) {
+  const displayValue = useCountUp(value, { duration: 500, decimals: 1 })
+  const isPass = value >= threshold
+
+  return (
+    <div className={cn('hero-big', isPass ? 'pass' : 'fail')}>
+      {displayValue.toFixed(1)}<small>%</small>
     </div>
   )
+}
+
+// Animated count
+function AnimatedCount({ value }: { value: number }) {
+  const displayValue = useCountUp(value, { duration: 500, decimals: 0 })
+  return <>{Math.round(displayValue)}</>
 }
