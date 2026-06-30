@@ -8,6 +8,7 @@ class AttendanceRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     section_id = Column(Integer, ForeignKey("sections.id"), nullable=False)
     date = Column(Date, nullable=False)
+    absent_count = Column(Integer, nullable=False)   
     source = Column(String, nullable=False)  # 'manual' or 'erp'
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
