@@ -166,9 +166,9 @@ export function HodView() {
       </motion.div>
 
       {/* Main content grid */}
-      <div className="content-grid" style={{ gridTemplateColumns: '1fr 380px' }}>
+      <div className="content-grid" style={{ gridTemplateColumns: '1fr 340px' }}>
         {/* Left column */}
-        <motion.div className="space-y-4" variants={panelVariants}>
+        <motion.div className="flex flex-col gap-4" variants={panelVariants}>
           {/* Sections Table with animations */}
           <div className="panel no-pad">
             <div className="panel-header in-pad">
@@ -261,7 +261,7 @@ export function HodView() {
         </motion.div>
 
         {/* Right column */}
-        <motion.div className="space-y-4" variants={panelVariants}>
+        <motion.div className="flex flex-col gap-4" variants={panelVariants}>
           {/* Alerts */}
           <AlertsPanel />
 

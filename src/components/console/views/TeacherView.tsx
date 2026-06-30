@@ -187,9 +187,9 @@ export function TeacherView() {
       </motion.div>
 
       {/* Main content grid */}
-      <div className="content-grid" style={{ gridTemplateColumns: '1fr 360px' }}>
+      <div className="content-grid" style={{ gridTemplateColumns: '1fr 320px' }}>
         {/* Entry Panel - Action first! */}
-        <motion.div className="entry-panel" variants={panelVariants}>
+        <motion.div className="entry-panel flex flex-col" variants={panelVariants}>
           <h3>Mark Absentees</h3>
           <p className="entry-subtitle">
             Enter roll numbers of absent students · {myClass?.name} ({strength} students)
@@ -280,7 +280,7 @@ export function TeacherView() {
         </motion.div>
 
         {/* Right column */}
-        <motion.div className="space-y-4" variants={panelVariants}>
+        <motion.div className="flex flex-col gap-4" variants={panelVariants}>
           {/* Benchmark Comparison with bullet bars */}
           <div className="panel">
             <div className="panel-header">

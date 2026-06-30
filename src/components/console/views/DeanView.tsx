@@ -156,15 +156,14 @@ export function DeanView() {
       </motion.div>
 
       {/* Main content grid */}
-      <div className="content-grid" style={{ gridTemplateColumns: '1fr 340px' }}>
-        {/* Left column */}
-        <motion.div className="space-y-4" variants={panelVariants}>
-          {/* Animated Heatmap */}
+      <div className="content-grid" style={{ gridTemplateColumns: '1fr 320px' }}>
+        {/* Left column - Heatmap */}
+        <motion.div variants={panelVariants}>
           <AnimatedHeatmap />
         </motion.div>
 
-        {/* Right column */}
-        <motion.div className="space-y-4" variants={panelVariants}>
+        {/* Right column - Sidebar */}
+        <motion.div className="flex flex-col gap-4" variants={panelVariants}>
           {/* Alerts Panel */}
           <AlertsPanel />
 
