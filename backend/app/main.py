@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import attendance         
+from app.routers import attendance, ingest
 
 attendance_app = FastAPI(
     title="First-Hour Attendance Dashboard",
@@ -8,7 +8,6 @@ attendance_app = FastAPI(
     version="1.0.0",
 )
 
-# Allow frontend to talk to the backend
 attendance_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,7 +15,10 @@ attendance_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-attendance_app.include_router(attendance.router)   
+
+attendance_app.include_router(attendance.router)
+attendance_app.include_router(ingest.router)
+
 @attendance_app.get("/")
 def root():
     return {"status": "ok", "message": "Attendance API is running"}
