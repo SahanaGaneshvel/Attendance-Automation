@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import attendance, ingest
+from app.routers import attendance, ingest, overview, departments, sections
 
 attendance_app = FastAPI(
     title="First-Hour Attendance Dashboard",
@@ -18,6 +18,9 @@ attendance_app.add_middleware(
 
 attendance_app.include_router(attendance.router)
 attendance_app.include_router(ingest.router)
+attendance_app.include_router(overview.router)
+attendance_app.include_router(departments.router)
+attendance_app.include_router(sections.router)
 
 @attendance_app.get("/")
 def root():
