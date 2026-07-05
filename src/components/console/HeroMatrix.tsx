@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store/appStore'
@@ -12,6 +12,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/utils'
+import { SPRING, getRippleDelay } from '@/lib/motion'
 
 // Mini sparkline for row trends
 interface RowSparklineProps {
@@ -79,7 +80,7 @@ function RowSparkline({ data, threshold, width = 80, height = 24 }: RowSparkline
       <motion.circle
         cx={lastPoint.x}
         cy={lastPoint.y}
-        r="2"
+        r="2.5"
         fill={isAboveThreshold ? 'var(--pass)' : 'var(--fail)'}
         initial={prefersReducedMotion ? {} : { scale: 0 }}
         animate={{ scale: 1 }}
@@ -92,6 +93,7 @@ function RowSparkline({ data, threshold, width = 80, height = 24 }: RowSparkline
 // Matrix cell component
 interface MatrixCellProps {
   sectionId: string
+  sectionName: string
   percentage: number
   isPass: boolean
   isNoSession?: boolean
@@ -106,6 +108,7 @@ interface MatrixCellProps {
 
 function MatrixCell({
   sectionId,
+  sectionName,
   percentage,
   isPass,
   isNoSession = false,
@@ -119,37 +122,46 @@ function MatrixCell({
 }: MatrixCellProps) {
   const prefersReducedMotion = useReducedMotion()
 
-  // Staggered animation delay based on position
-  const staggerDelay = (rowIndex * 0.04 + colIndex * 0.025)
-
-  const cellClasses = cn(
-    'matrix-cell cursor-pointer transition-all duration-150',
-    isNoSession ? 'neutral' : isPass ? 'pass' : 'fail',
-    isRowHovered && 'ring-1 ring-inset ring-brand/10',
-    isColHovered && 'ring-2 ring-inset ring-brand/20'
-  )
+  // Staggered animation delay based on position (diagonal ripple)
+  const staggerDelay = getRippleDelay(rowIndex, colIndex)
 
   return (
     <td className="px-1.5 py-1.5">
-      <motion.button
-        key={`${sectionId}-${recolorKey}`}
-        onClick={onClick}
-        onMouseEnter={() => onHover(colIndex)}
-        onMouseLeave={() => onHover(null)}
-        className={cellClasses}
-        initial={prefersReducedMotion ? {} : { scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{
-          delay: staggerDelay,
-          type: 'spring',
-          stiffness: 400,
-          damping: 25,
-        }}
-        whileHover={{ scale: 1.02, y: -1 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        {isNoSession ? 'no sess' : `${Math.round(percentage)}`}
-      </motion.button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <motion.button
+            key={`${sectionId}-${recolorKey}`}
+            onClick={onClick}
+            onMouseEnter={() => onHover(colIndex)}
+            onMouseLeave={() => onHover(null)}
+            className={cn(
+              'matrix-cell cursor-pointer transition-all duration-100',
+              isNoSession ? 'none' : isPass ? 'pass' : 'fail',
+              (isRowHovered || isColHovered) && 'ring-1 ring-inset ring-ink/10'
+            )}
+            initial={prefersReducedMotion ? {} : { scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{
+              delay: staggerDelay,
+              ...SPRING.snappy,
+            }}
+            whileHover={
+              !isNoSession
+                ? { scale: 1.02, y: -1, boxShadow: 'var(--panel-shadow-lg)' }
+                : undefined
+            }
+            whileTap={!isNoSession ? { scale: 0.98 } : undefined}
+          >
+            {isNoSession ? 'N/S' : `${Math.round(percentage)}`}
+          </motion.button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-medium">{sectionName}</p>
+          <p className="text-xs opacity-75">
+            {isNoSession ? 'No session scheduled' : `${percentage.toFixed(1)}%`}
+          </p>
+        </TooltipContent>
+      </Tooltip>
     </td>
   )
 }
@@ -170,131 +182,157 @@ export function HeroMatrix() {
 
   useEffect(() => {
     if (selectedDate !== prevDateRef.current || threshold !== prevThresholdRef.current) {
-      setRecolorKey(k => k + 1)
+      setRecolorKey((k) => k + 1)
       prevDateRef.current = selectedDate
       prevThresholdRef.current = threshold
     }
   }, [selectedDate, threshold])
 
-  // Get max sections count for column headers
-  const maxSections = Math.max(
-    ...departments.map((d) => getSectionsByDepartment(d.id).length)
-  )
-  const sectionLabels = ['A', 'B', 'C'].slice(0, maxSections)
+  // Build matrix data - only render columns that exist per department
+  const matrixData = useMemo(() => {
+    return departments.map((dept) => {
+      const deptSections = getSectionsByDepartment(dept.id)
+      const deptStats = getDepartmentDailyStats(dept.id, selectedDate)
+      const trendData = getDepartmentTrend(dept.id).map((p) => p.percentage)
+
+      const cells = deptSections.map((section) => {
+        const attendance = getDailyClassAttendance(section.id, selectedDate)
+        // Simulate no_session for demonstration
+        const isNoSession = section.id === 'it-c'
+        return {
+          sectionId: section.id,
+          sectionName: `${dept.code} - Section ${section.name}`,
+          percentage: attendance?.percentage ?? 0,
+          strength: section.strength,
+          isNoSession,
+        }
+      })
+
+      return {
+        dept,
+        deptStats,
+        trendData,
+        cells,
+        sectionCount: deptSections.length,
+      }
+    })
+  }, [selectedDate, threshold])
+
+  // Find max sections to determine column headers (only show what exists)
+  const maxSections = Math.max(...matrixData.map((d) => d.sectionCount))
+  const sectionLabels = ['A', 'B', 'C', 'D', 'E'].slice(0, maxSections)
 
   return (
-    <div className="matrix-panel">
-      <div className="matrix-header flex items-center justify-between">
+    <div className="panel no-pad">
+      <div className="panel-header in-pad" style={{ padding: '14px 16px 10px' }}>
         <div>
-          <h3 className="font-display text-sm text-ink">Department × Section</h3>
+          <span className="panel-title">Department × Section Matrix</span>
           <p className="text-xs text-muted mt-0.5">
-            Green ≥ {threshold} · Red &lt; {threshold} · grey = no session · click to drill
+            Hover to highlight · Click to drill down
           </p>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-pass-cell" />
+            <span className="text-muted">≥{threshold}%</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-fail-cell" />
+            <span className="text-muted">&lt;{threshold}%</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-none" />
+            <span className="text-muted">No Session</span>
+          </span>
         </div>
       </div>
 
-      <div className="matrix-body overflow-x-auto">
+      <div className="overflow-x-auto">
         <table className="matrix-table">
           <thead>
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase tracking-wider w-28">
-                Department
-              </th>
+              <th className="left">Department</th>
+              {/* Only render section columns that exist */}
               {sectionLabels.map((label, idx) => (
                 <th
                   key={label}
                   className={cn(
-                    'px-1.5 py-2 text-center text-xs font-medium text-muted uppercase tracking-wider',
-                    hoveredCol === idx && 'bg-surface-2/50'
+                    'transition-colors duration-100',
+                    hoveredCol === idx && 'bg-accent-soft'
                   )}
                 >
                   Sec {label}
                 </th>
               ))}
-              <th className="px-1.5 py-2 text-center text-xs font-medium text-muted uppercase tracking-wider">
-                AVG
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase tracking-wider">
-                20-Day Trend
-              </th>
+              <th>AVG</th>
+              <th className="left">20-Day Trend</th>
             </tr>
           </thead>
           <tbody>
-            {departments.map((dept, rowIndex) => {
-              const deptSections = getSectionsByDepartment(dept.id)
-              const deptStats = getDepartmentDailyStats(dept.id, selectedDate)
-              const trendData = getDepartmentTrend(dept.id).map(p => p.percentage)
+            {matrixData.map((row, rowIndex) => {
               const isRowHovered = hoveredRow === rowIndex
 
               return (
                 <motion.tr
-                  key={dept.id}
-                  initial={prefersReducedMotion ? {} : { opacity: 0, x: -10 }}
+                  key={row.dept.id}
+                  initial={prefersReducedMotion ? {} : { opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: rowIndex * 0.03 }}
                   className={cn(
-                    'border-t border-line transition-colors duration-150',
-                    isRowHovered && 'bg-surface-2/30'
+                    'border-t border-line transition-colors duration-100',
+                    isRowHovered && 'bg-accent-soft/30'
                   )}
                   onMouseEnter={() => setHoveredRow(rowIndex)}
                   onMouseLeave={() => setHoveredRow(null)}
                 >
-                  {/* Department Name & Strength */}
-                  <td className="px-3 py-2">
+                  {/* Department Name & Total Strength */}
+                  <td className="px-4 py-2">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
-                          onClick={() => navigate(`/department/${dept.id}`)}
-                          className="text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 rounded"
+                          onClick={() => navigate(`/department/${row.dept.id}`)}
+                          className="text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 rounded"
                         >
-                          <span className="font-medium text-sm text-ink group-hover:text-brand transition-colors">
-                            {dept.code}
+                          <span className="font-semibold text-sm text-ink group-hover:text-accent transition-colors">
+                            {row.dept.code}
                           </span>
-                          <span className="text-[10px] text-muted ml-1.5 font-data">
-                            {deptStats?.totalStrength ?? 0}
+                          <span className="text-[10px] text-muted ml-2 font-data">
+                            {row.deptStats?.totalStrength ?? 0}
                           </span>
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="font-medium">{dept.name}</p>
+                        <p className="font-medium">{row.dept.name}</p>
                         <p className="text-xs opacity-75">
-                          Total strength: {deptStats?.totalStrength ?? 0}
+                          Total strength: {row.deptStats?.totalStrength ?? 0}
                         </p>
                       </TooltipContent>
                     </Tooltip>
                   </td>
 
-                  {/* Section Cells */}
-                  {sectionLabels.map((label, colIndex) => {
-                    const section = deptSections.find((s) => s.name === label)
-                    if (!section) {
-                      return (
-                        <td key={label} className="px-1.5 py-1.5">
-                          <div className="matrix-cell neutral opacity-50">—</div>
-                        </td>
-                      )
+                  {/* Section Cells - only render what exists, no empty columns */}
+                  {sectionLabels.map((_, colIndex) => {
+                    const cell = row.cells[colIndex]
+
+                    // If this department doesn't have this section, render empty
+                    if (!cell) {
+                      return <td key={colIndex} className="px-1.5 py-1.5" />
                     }
-
-                    const attendance = getDailyClassAttendance(section.id, selectedDate)
-                    const percentage = attendance?.percentage ?? 0
-                    const isPass = percentage >= threshold
-
-                    // Simulate no_session for IT Sec C
-                    const isNoSession = section.id === 'it-c'
 
                     return (
                       <MatrixCell
-                        key={section.id}
-                        sectionId={section.id}
-                        percentage={percentage}
-                        isPass={isPass}
-                        isNoSession={isNoSession}
+                        key={cell.sectionId}
+                        sectionId={cell.sectionId}
+                        sectionName={cell.sectionName}
+                        percentage={cell.percentage}
+                        isPass={cell.percentage >= threshold}
+                        isNoSession={cell.isNoSession}
                         rowIndex={rowIndex}
                         colIndex={colIndex}
                         isRowHovered={isRowHovered}
                         isColHovered={hoveredCol === colIndex}
                         recolorKey={recolorKey}
-                        onClick={() => navigate(`/section/${section.id}`)}
+                        onClick={() => navigate(`/section/${cell.sectionId}`)}
                         onHover={setHoveredCol}
                       />
                     )
@@ -305,40 +343,38 @@ export function HeroMatrix() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <motion.button
-                          key={`avg-${dept.id}-${recolorKey}`}
-                          onClick={() => navigate(`/department/${dept.id}`)}
+                          key={`avg-${row.dept.id}-${recolorKey}`}
+                          onClick={() => navigate(`/department/${row.dept.id}`)}
                           className={cn(
-                            'matrix-cell font-bold',
-                            (deptStats?.averagePercentage ?? 0) >= threshold ? 'pass' : 'fail'
+                            'matrix-cell avg font-bold',
+                            (row.deptStats?.averagePercentage ?? 0) >= threshold
+                              ? 'pass'
+                              : 'fail'
                           )}
-                          initial={prefersReducedMotion ? {} : { scale: 0.9, opacity: 0 }}
+                          initial={prefersReducedMotion ? {} : { scale: 0.85, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           transition={{
-                            delay: rowIndex * 0.04 + maxSections * 0.025,
-                            type: 'spring',
-                            stiffness: 400,
-                            damping: 25,
+                            delay: getRippleDelay(rowIndex, maxSections),
+                            ...SPRING.snappy,
                           }}
                           whileHover={{ scale: 1.02, y: -1 }}
                         >
-                          {Math.round(deptStats?.averagePercentage ?? 0)}
+                          {Math.round(row.deptStats?.averagePercentage ?? 0)}
                         </motion.button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="font-medium">{dept.name} Average</p>
+                        <p className="font-medium">{row.dept.name} Average</p>
                         <p className="text-xs opacity-75">
-                          Weighted: {deptStats?.totalPresent ?? 0} / {deptStats?.totalStrength ?? 0}
+                          Weighted: {row.deptStats?.totalPresent ?? 0} /{' '}
+                          {row.deptStats?.totalStrength ?? 0}
                         </p>
                       </TooltipContent>
                     </Tooltip>
                   </td>
 
                   {/* 20-Day Sparkline */}
-                  <td className="px-3 py-2">
-                    <RowSparkline
-                      data={trendData}
-                      threshold={threshold}
-                    />
+                  <td className="px-4 py-2">
+                    <RowSparkline data={row.trendData} threshold={threshold} />
                   </td>
                 </motion.tr>
               )

@@ -1,11 +1,14 @@
 import { Routes, Route } from 'react-router-dom'
+import { DataProvider } from '@/contexts/DataContext'
 import { AppShell } from '@/components/console'
 
 function App() {
   return (
-    <Routes>
-      <Route path="*" element={<AppShell />} />
-    </Routes>
+    <DataProvider>
+      <Routes>
+        <Route path="*" element={<AppShell />} />
+      </Routes>
+    </DataProvider>
   )
 }
 
