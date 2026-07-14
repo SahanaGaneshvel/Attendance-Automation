@@ -8,18 +8,17 @@ Includes:
 """
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
+import hashlib
 
 from app.models import (
     School, Department, Section, Student, User,
     AttendanceRecord, SessionStatus, CalendarDay
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Simple password hash for development. Replace with proper bcrypt in production."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def seed_database(db: Session):
