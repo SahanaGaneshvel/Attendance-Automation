@@ -56,12 +56,12 @@ export function useAuth() {
       })
 
       // Map backend role to frontend role
+      // Backend uses: teacher, hod, dean, admin
       const roleMap: Record<string, DemoRole> = {
-        super_admin: 'admin',
+        admin: 'dean',      // Admin sees dean view (full access)
         dean: 'dean',
         hod: 'hod',
-        faculty: 'teacher',
-        class_advisor: 'teacher',
+        teacher: 'teacher',
       }
       const frontendRole = roleMap[user.role] || 'teacher'
       setRole(frontendRole)

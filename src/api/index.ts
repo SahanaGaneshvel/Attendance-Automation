@@ -20,7 +20,36 @@ export {
   fetchWorkingDays,
   fetchToday,
   submitAttendance,
+  getAttendance,
+  getTeacherDashboard,
+  getHodDashboard,
+  getDeanDashboard,
+  getAttendanceCsvUrl,
+  getSummaryCsvUrl,
+  getMonthlyReportCsvUrl,
+  downloadWithAuth,
   ApiError,
+} from './client'
+
+// Client types
+export type {
+  SubmitAttendanceRequest,
+  AttendanceResponse,
+  AttendanceRecord,
+  TeacherDashboardData,
+  QuickStats,
+  TrendPoint as ApiTrendPoint,
+  HodDashboardData,
+  HodSectionData,
+  HodDashboardStats,
+  PeerDepartment,
+  DeanDashboardData,
+  DeanDashboardStats,
+  DeanDepartmentRanking,
+  DeanDepartmentHeatmap,
+  DeanSectionData,
+  DeanChronicOffender,
+  DeanBiggestDrop,
 } from './client'
 
 // Types
@@ -38,6 +67,7 @@ export type {
   WorkingDaysResponse,
   LoginResponse,
   UserInfo,
+  UserScope,
 } from './types'
 
 // Adapters

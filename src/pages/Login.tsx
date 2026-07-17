@@ -5,7 +5,7 @@
 import { useState, type FormEvent } from 'react'
 import { motion } from 'motion/react'
 import { Loader2, AlertCircle } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuthContext } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 
 interface LoginPageProps {
@@ -15,15 +15,26 @@ interface LoginPageProps {
 export function LoginPage({ onSuccess }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { login, isLoading, error } = useAuth()
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { login } = useAuthContext()
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    setLocalError(null)
+    setIsSubmitting(true)
+
     const result = await login(email, password)
-    if (result.success && onSuccess) {
-      onSuccess()
+    setIsSubmitting(false)
+
+    if (result.success) {
+      onSuccess?.()
+    } else {
+      setLocalError(result.error || 'Login failed')
     }
   }
+
+  const error = localError
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-ground p-4">
@@ -101,7 +112,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             {/* Submit */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className={cn(
                 'w-full py-2.5 px-4 rounded-lg font-medium transition-all',
                 'bg-accent text-white',
@@ -110,7 +121,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
                 'flex items-center justify-center gap-2'
               )}
             >
-              {isLoading ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Signing in...

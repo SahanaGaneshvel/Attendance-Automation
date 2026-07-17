@@ -194,11 +194,19 @@ export interface LoginResponse {
   token_type: string
 }
 
+export interface UserScope {
+  section_id: number | null
+  section_name: string | null
+  department_id: number | null
+  department_name: string | null
+  school_id: number | null
+  school_name: string | null
+}
+
 export interface UserInfo {
   id: number
   name: string
   email: string
-  role: string
-  scope_department_id: number | null
-  scope_section_id: number | null
+  role: string  // 'teacher' | 'hod' | 'dean' | 'admin'
+  scope: UserScope
 }

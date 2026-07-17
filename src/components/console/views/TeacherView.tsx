@@ -1,78 +1,96 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@/store/appStore'
+import { useAuthContext } from '@/contexts/AuthContext'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useCountUp } from '@/hooks/useCountUp'
 import {
-  getSectionById,
-  getDailyClassAttendance,
-  getDepartmentDailyStats,
-  getSectionTrend,
-  submitManualAttendance,
-} from '@/data/store'
+  submitAttendance,
+  getTeacherDashboard,
+  ApiError,
+  type TeacherDashboardData,
+} from '@/api'
 import { cn } from '@/lib/utils'
 import { SPRING, TIMING, staggerContainer, panelVariants, chipVariants } from '@/lib/motion'
 import { AnimatedRing, BulletBars, StreakStrip } from '../AnimatedWidgets'
 
 export function TeacherView() {
   const { selectedDate, threshold, showToast } = useAppStore()
+  const { user } = useAuthContext()
   const prefersReducedMotion = useReducedMotion()
 
-  // Mock teacher's assigned class (in real app, comes from auth)
-  const myClassId = 'cse-a'
-  const myClass = getSectionById(myClassId)
-  const myDeptId = myClass?.departmentId ?? 'cse'
+  // Get teacher's assigned section from auth context
+  const mySectionId = user?.scope?.section_id ?? null
+  const mySectionName = user?.scope?.section_name ?? 'My Class'
 
   // Entry state
   const [absentRolls, setAbsentRolls] = useState<number[]>([])
   const [inputValue, setInputValue] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Get class attendance
-  const classAttendance = useMemo(
-    () => getDailyClassAttendance(myClassId, selectedDate),
-    [selectedDate]
-  )
+  // Dashboard data from API
+  const [dashboardData, setDashboardData] = useState<TeacherDashboardData | null>(null)
 
-  // Get department stats for comparison
-  const deptStats = useMemo(
-    () => getDepartmentDailyStats(myDeptId, selectedDate),
-    [selectedDate]
-  )
+  // Fetch dashboard data
+  const fetchDashboard = useCallback(async () => {
+    if (!mySectionId) return
+    setIsLoading(true)
+    try {
+      const data = await getTeacherDashboard(selectedDate)
+      setDashboardData(data)
+      // Reset absentRolls if already submitted
+      if (data.today.status === 'recorded' || data.today.status === 'no_session') {
+        setAbsentRolls([])
+      }
+    } catch {
+      // Error fetching - show error state
+      setDashboardData(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [mySectionId, selectedDate])
 
-  // Get 20-day trend for streak strip
-  const trendData = useMemo(() => {
-    return getSectionTrend(myClassId).slice(-20).map((t) => ({
-      date: t.date,
-      percentage: t.percentage,
-    }))
-  }, [])
+  useEffect(() => {
+    fetchDashboard()
+  }, [fetchDashboard])
 
-  const strength = myClass?.strength ?? 60
-  const present = classAttendance?.present ?? strength - absentRolls.length
-  const percentage =
-    classAttendance?.percentage ?? ((strength - absentRolls.length) / strength) * 100
-  const submitted = classAttendance !== null
+  // Calculate values based on current state
+  const strength = dashboardData?.strength ?? 60
+  const submitted = dashboardData?.today.status === 'recorded' || dashboardData?.today.status === 'no_session'
+  const isNoSession = dashboardData?.today.status === 'no_session'
+
+  const present = submitted
+    ? (dashboardData?.today.present ?? strength)
+    : strength - absentRolls.length
+
+  const percentage = submitted
+    ? (dashboardData?.today.percentage ?? 100)
+    : ((strength - absentRolls.length) / strength) * 100
 
   // Benchmark comparison data for bullet bars
-  const benchmarks = useMemo(
-    () => [
-      { id: 'you', name: 'Your Class', value: percentage, isMe: true },
-      { id: 'dept', name: 'Dept Avg', value: deptStats?.averagePercentage ?? 0 },
-      { id: 'threshold', name: 'Threshold', value: threshold },
-    ],
-    [percentage, deptStats, threshold]
-  )
+  const benchmarks = [
+    { id: 'you', name: 'Your Class', value: percentage, isMe: true },
+    { id: 'dept', name: 'Dept Avg', value: dashboardData?.department_avg ?? 0 },
+    { id: 'threshold', name: 'Threshold', value: threshold },
+  ]
 
-  // Quick stats
-  const quickStats = useMemo(() => {
-    const values = trendData.map((d) => d.percentage)
-    return {
-      best: Math.max(...values),
-      worst: Math.min(...values),
-      belowDays: values.filter((v) => v < threshold).length,
-      average: values.reduce((a, b) => a + b, 0) / values.length,
-    }
-  }, [trendData, threshold])
+  // Trend data for charts - filter to only recorded days with valid percentages
+  const trendData = (dashboardData?.trend ?? [])
+    .filter(t => t.status === 'recorded' && t.percentage !== null)
+    .map(t => ({
+      date: t.date,
+      percentage: t.percentage as number,
+    }))
+
+  // Quick stats from API
+  const quickStats = dashboardData?.quick_stats ?? {
+    best: 0,
+    worst: 0,
+    days_below_75: 0,
+    average: 0,
+    recorded_days: 0,
+  }
 
   const handleAddRoll = () => {
     const roll = parseInt(inputValue.trim(), 10)
@@ -86,24 +104,70 @@ export function TeacherView() {
     setAbsentRolls(absentRolls.filter((r) => r !== roll))
   }
 
-  const handleSubmit = () => {
-    const success = submitManualAttendance(myClassId, selectedDate, absentRolls.length)
-    if (success) {
-      showToast('Attendance submitted successfully', 'success')
+  const handleSubmit = async () => {
+    if (!mySectionId) {
+      showToast('No section assigned', 'error')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const response = await submitAttendance({
+        section_id: mySectionId,
+        date: selectedDate,
+        status: 'recorded',
+        absent_count: absentRolls.length,
+      })
+      showToast(`Attendance submitted: ${response.percentage?.toFixed(1)}%`, 'success')
       setAbsentRolls([])
-    } else {
-      showToast('Failed to submit attendance', 'error')
+      // Refresh dashboard data
+      await fetchDashboard()
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to submit attendance'
+      showToast(message, 'error')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const handleNoSession = () => {
-    showToast('Marked as no session', 'info')
+  const handleNoSession = async () => {
+    if (!mySectionId) {
+      showToast('No section assigned', 'error')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await submitAttendance({
+        section_id: mySectionId,
+        date: selectedDate,
+        status: 'no_session',
+        no_session_reason: 'No class scheduled',
+      })
+      showToast('Marked as no session', 'info')
+      // Refresh dashboard data
+      await fetchDashboard()
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to mark no session'
+      showToast(message, 'error')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAddRoll()
     }
+  }
+
+  // Show loading state
+  if (isLoading && !dashboardData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-muted">Loading...</div>
+      </div>
+    )
   }
 
   return (
@@ -115,7 +179,7 @@ export function TeacherView() {
     >
       {/* Header */}
       <motion.div variants={panelVariants}>
-        <h1 className="view-title">{myClass?.name ?? 'My Class'}</h1>
+        <h1 className="view-title">{mySectionName}</h1>
         <p className="view-subtitle">Teacher Dashboard · {selectedDate}</p>
       </motion.div>
 
@@ -142,12 +206,12 @@ export function TeacherView() {
               <div className="rm-label">Present today</div>
               {submitted && (
                 <motion.div
-                  className="stat-tag pass mt-2"
+                  className={cn('stat-tag mt-2', isNoSession ? '' : 'pass')}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={SPRING.snappy}
                 >
-                  Submitted
+                  {isNoSession ? 'No Session' : 'Submitted'}
                 </motion.div>
               )}
             </div>
@@ -192,7 +256,7 @@ export function TeacherView() {
         <motion.div className="entry-panel flex flex-col" variants={panelVariants}>
           <h3>Mark Absentees</h3>
           <p className="entry-subtitle">
-            Enter roll numbers of absent students · {myClass?.name} ({strength} students)
+            Enter roll numbers of absent students · {mySectionName} ({strength} students)
           </p>
 
           {/* Animated chips container */}
@@ -243,12 +307,12 @@ export function TeacherView() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              disabled={submitted}
+              disabled={submitted || isSubmitting}
             />
             <motion.button
               className="entry-btn"
               onClick={handleAddRoll}
-              disabled={submitted || !inputValue.trim()}
+              disabled={submitted || isSubmitting || !inputValue.trim()}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -261,18 +325,18 @@ export function TeacherView() {
             <motion.button
               className="entry-btn"
               onClick={handleSubmit}
-              disabled={submitted}
-              whileHover={submitted ? {} : { scale: 1.02 }}
-              whileTap={submitted ? {} : { scale: 0.98 }}
+              disabled={submitted || isSubmitting}
+              whileHover={submitted || isSubmitting ? {} : { scale: 1.02 }}
+              whileTap={submitted || isSubmitting ? {} : { scale: 0.98 }}
             >
-              {submitted ? 'Submitted' : 'Submit Attendance'}
+              {isSubmitting ? 'Submitting...' : submitted ? (isNoSession ? 'No Session' : 'Submitted') : 'Submit Attendance'}
             </motion.button>
             <motion.button
               className="entry-btn ghost"
               onClick={handleNoSession}
-              disabled={submitted}
-              whileHover={submitted ? {} : { scale: 1.02 }}
-              whileTap={submitted ? {} : { scale: 0.98 }}
+              disabled={submitted || isSubmitting}
+              whileHover={submitted || isSubmitting ? {} : { scale: 1.02 }}
+              whileTap={submitted || isSubmitting ? {} : { scale: 0.98 }}
             >
               No Session Today
             </motion.button>
@@ -294,7 +358,7 @@ export function TeacherView() {
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">20-Day Trend</span>
-              <span className="panel-subtitle">{myClass?.name}</span>
+              <span className="panel-subtitle">{mySectionName}</span>
             </div>
             <div className="mt-2">
               <StreakStrip data={trendData} threshold={threshold} />
@@ -339,9 +403,9 @@ export function TeacherView() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                <div className="text-xs text-muted uppercase">Days Below {threshold}%</div>
+                <div className="text-xs text-muted uppercase">Days Below 75%</div>
                 <div className="font-data font-semibold">
-                  <AnimatedCount value={quickStats.belowDays} />
+                  <AnimatedCount value={quickStats.days_below_75} />
                 </div>
               </motion.div>
               <motion.div

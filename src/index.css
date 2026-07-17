@@ -615,6 +615,36 @@
     color: var(--chrome-ink);
   }
 
+  /* User info display - for top nav */
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--chrome-2);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+
+  .user-info .user-name {
+    color: var(--chrome-ink);
+    font-weight: 500;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-info .user-role {
+    background: var(--accent);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
   /* Pill button - for top nav */
   .pill-btn {
     display: flex;

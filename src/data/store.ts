@@ -22,6 +22,7 @@ interface SectionClass {
 interface DailyClassAttendance {
   sectionId: string
   date: string
+  status: 'recorded' | 'no_session' | 'pending'
   present: number
   absent: number
   strength: number
@@ -108,6 +109,7 @@ export function getDailyClassAttendance(
   return {
     sectionId,
     date,
+    status: record ? 'recorded' as const : 'pending' as const,
     present,
     absent,
     strength: section.strength,

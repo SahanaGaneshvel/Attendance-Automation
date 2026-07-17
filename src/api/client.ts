@@ -266,15 +266,278 @@ export async function fetchToday(): Promise<{ today: string }> {
 export interface SubmitAttendanceRequest {
   section_id: number
   date: string
-  absent_count: number
-  source: 'manual' | 'erp'
+  status: 'recorded' | 'no_session'
+  absent_count?: number
+  no_session_reason?: string
+}
+
+export interface AttendanceResponse {
+  message: string
+  section_id: number
+  section_name: string
+  date: string
+  status: string
+  absent_count: number | null
+  present_count: number | null
+  strength: number
+  percentage: number | null
+}
+
+export interface AttendanceRecord {
+  section_id: number
+  section_name: string
+  date: string
+  status: 'recorded' | 'no_session' | 'pending'
+  strength: number
+  absent_count: number | null
+  present_count: number | null
+  percentage: number | null
+  no_session_reason?: string
 }
 
 export async function submitAttendance(
   data: SubmitAttendanceRequest
-): Promise<{ success: boolean; id: number }> {
-  return apiFetch('/attendance', {
+): Promise<AttendanceResponse> {
+  return apiFetch('/attendance/', {
     method: 'POST',
     body: JSON.stringify(data),
   })
+}
+
+export async function getAttendance(
+  sectionId: number,
+  date: string
+): Promise<AttendanceRecord> {
+  return apiFetch(`/attendance/${sectionId}/${date}`)
+}
+
+// ============ Teacher Dashboard ============
+
+export interface TrendPoint {
+  date: string
+  percentage: number | null
+  status: 'recorded' | 'no_session' | 'pending'
+}
+
+export interface QuickStats {
+  best: number
+  worst: number
+  days_below_75: number
+  average: number
+  recorded_days: number
+}
+
+export interface TeacherDashboardData {
+  section_id: number
+  section_name: string
+  department_id: number
+  department_name: string
+  strength: number
+  today: {
+    status: string
+    percentage: number | null
+    present: number | null
+    absent: number | null
+  }
+  department_avg: number | null
+  trend: TrendPoint[]
+  quick_stats: QuickStats
+}
+
+export async function getTeacherDashboard(date: string): Promise<TeacherDashboardData> {
+  return apiFetch(`/sections/my-section/dashboard?date=${date}`)
+}
+
+// ============ HOD Dashboard ============
+
+export interface HodSectionData {
+  section_id: number
+  section_name: string
+  strength: number
+  status: 'recorded' | 'no_session' | 'pending'
+  percentage: number | null
+  present: number | null
+  absent: number | null
+  trend: number[]  // Last 10 days of recorded percentages
+}
+
+export interface PeerDepartment {
+  department_id: number
+  department_name: string
+  department_code: string
+  percentage: number | null
+  is_mine: boolean
+  rank: number
+}
+
+export interface HodDashboardStats {
+  percentage: number | null
+  total_present: number
+  total_strength: number
+  recorded_count: number
+  pending_count: number
+  no_session_count: number
+  below_threshold_count: number
+  my_rank: number
+  total_departments: number
+}
+
+export interface HodDashboardData {
+  department_id: number
+  department_name: string
+  department_code: string
+  date: string
+  stats: HodDashboardStats
+  sections: HodSectionData[]
+  peer_comparison: PeerDepartment[]
+  trend: TrendPoint[]
+}
+
+export async function getHodDashboard(date: string): Promise<HodDashboardData> {
+  return apiFetch(`/departments/my-department/dashboard?date=${date}`)
+}
+
+// ============ Dean Dashboard ============
+
+export interface DeanSectionData {
+  section_id: number
+  name: string
+  year: number
+  semester: number
+  stream: string
+  strength: number
+  status: 'recorded' | 'no_session' | 'pending'
+  percentage: number | null
+  present: number | null
+  absent: number | null
+}
+
+export interface DeanDepartmentHeatmap {
+  department_id: number
+  department_name: string
+  department_code: string
+  percentage: number | null
+  sections: DeanSectionData[]
+}
+
+export interface DeanDepartmentRanking {
+  department_id: number
+  department_name: string
+  department_code: string
+  percentage: number | null
+  recorded_count: number
+  pending_count: number
+  no_session_count: number
+  total_present: number
+  total_strength: number
+  rank: number
+}
+
+export interface DeanChronicOffender {
+  section_id: string
+  section_name: string
+  department_id: string
+  department_code: string
+  department_name: string
+  year: number
+  semester: number
+  consecutive_days: number
+  current_percentage: number
+}
+
+export interface DeanBiggestDrop {
+  section_id: string
+  section_name: string
+  department_id: string
+  department_code: string
+  department_name: string
+  year: number
+  drop: number
+  previous_percentage: number
+  current_percentage: number
+  previous_date: string
+}
+
+export interface DeanDashboardStats {
+  percentage: number | null
+  total_present: number
+  total_strength: number
+  classes_above: number
+  classes_below: number
+  classes_pending: number
+  classes_no_session: number
+  total_classes: number
+  departments_below_threshold: number
+  total_departments: number
+}
+
+export interface DeanDashboardData {
+  school_id: number
+  school_name: string
+  date: string
+  threshold: number
+  stats: DeanDashboardStats
+  department_rankings: DeanDepartmentRanking[]
+  chronic_offenders: DeanChronicOffender[]
+  biggest_drop: DeanBiggestDrop | null
+  trend: TrendPoint[]
+  heatmap: DeanDepartmentHeatmap[]
+}
+
+export async function getDeanDashboard(date: string, threshold: number = 75): Promise<DeanDashboardData> {
+  return apiFetch(`/schools/my-school/dashboard?date=${date}&threshold=${threshold}`)
+}
+
+// ============ Export Endpoints ============
+
+/**
+ * Download attendance CSV for a date range
+ */
+export function getAttendanceCsvUrl(fromDate: string, toDate: string, departmentId?: number): string {
+  let url = `${API_BASE}/export/attendance/csv?from=${fromDate}&to=${toDate}`
+  if (departmentId) {
+    url += `&department_id=${departmentId}`
+  }
+  return url
+}
+
+/**
+ * Download daily summary CSV
+ */
+export function getSummaryCsvUrl(date: string): string {
+  return `${API_BASE}/export/summary/csv?date=${date}`
+}
+
+/**
+ * Download monthly report CSV
+ */
+export function getMonthlyReportCsvUrl(year: number, month: number): string {
+  return `${API_BASE}/export/report/csv?year=${year}&month=${month}`
+}
+
+/**
+ * Trigger a file download with auth token
+ */
+export async function downloadWithAuth(url: string, filename: string): Promise<void> {
+  const token = getToken()
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: token ? `Bearer ${token}` : '',
+    },
+  })
+
+  if (!response.ok) {
+    throw new ApiError(`Download failed: ${response.status}`, response.status)
+  }
+
+  const blob = await response.blob()
+  const downloadUrl = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = downloadUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(downloadUrl)
 }

@@ -487,3 +487,68 @@ def get_chronic_offenders(
     # Sort by consecutive days descending
     offenders.sort(key=lambda x: x["consecutive_days"], reverse=True)
     return offenders
+
+
+# ============================================================================
+# Biggest Single-Day Drop
+# ============================================================================
+
+def get_biggest_drop(
+    db: Session,
+    target_date: Date,
+    department_id: Optional[int] = None,
+) -> Optional[dict]:
+    """
+    Find the section with the biggest drop from previous day to target date.
+    Only compares RECORDED days (skips no_session/pending).
+    """
+    from datetime import timedelta
+
+    query = db.query(Section)
+    if department_id:
+        query = query.filter_by(department_id=department_id)
+
+    sections = query.all()
+    biggest_drop = None
+
+    for section in sections:
+        # Get today's attendance
+        today_att = get_section_attendance(db, section.id, target_date)
+        if today_att["status"] != SessionStatus.RECORDED.value:
+            continue
+
+        # Find most recent previous RECORDED day
+        previous_records = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.section_id == section.id,
+                AttendanceRecord.date < target_date,
+                AttendanceRecord.status == SessionStatus.RECORDED,
+            )
+            .order_by(AttendanceRecord.date.desc())
+            .first()
+        )
+
+        if not previous_records:
+            continue
+
+        prev_pct = previous_records.percentage
+        today_pct = today_att["percentage"]
+        drop = prev_pct - today_pct
+
+        if drop > 0 and (biggest_drop is None or drop > biggest_drop["drop"]):
+            dept = db.get(Department, section.department_id)
+            biggest_drop = {
+                "section_id": str(section.id),
+                "section_name": section.name,
+                "department_id": str(dept.id) if dept else None,
+                "department_code": dept.code if dept else None,
+                "department_name": dept.name if dept else None,
+                "year": section.year,
+                "drop": round(drop, 1),
+                "previous_percentage": round(prev_pct, 1),
+                "current_percentage": round(today_pct, 1),
+                "previous_date": previous_records.date.isoformat(),
+            }
+
+    return biggest_drop

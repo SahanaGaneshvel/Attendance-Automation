@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import attendance, ingest, overview, departments, sections, trends, auth, stats, calendar
+from app.routers import attendance, ingest, overview, departments, sections, trends, auth, stats, calendar, schools, export
 
 attendance_app = FastAPI(
     title="First-Hour Attendance Dashboard",
@@ -31,6 +31,12 @@ attendance_app.include_router(calendar.router)
 
 # Auth
 attendance_app.include_router(auth.router)
+
+# Schools (Dean dashboard)
+attendance_app.include_router(schools.router)
+
+# Export (CSV downloads)
+attendance_app.include_router(export.router)
 
 
 @attendance_app.get("/")

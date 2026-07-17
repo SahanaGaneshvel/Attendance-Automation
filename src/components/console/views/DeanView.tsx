@@ -1,15 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { useAppStore } from '@/store/appStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useCountUp } from '@/hooks/useCountUp'
-import {
-  departments,
-  getCollegeStats,
-  getAllDepartmentStats,
-  getChronicOffenders,
-  getBiggestSingleDayDrop,
-} from '@/data/store'
+import { getDeanDashboard, ApiError } from '@/api'
+import type { DeanDashboardData } from '@/api'
 import { cn } from '@/lib/utils'
 import { SPRING, TIMING, staggerContainer, panelVariants } from '@/lib/motion'
 import { AnimatedHeatmap } from '../AnimatedHeatmap'
@@ -19,44 +14,83 @@ import { BulletBars, StreakStrip } from '../AnimatedWidgets'
 export function DeanView() {
   const { selectedDate, threshold } = useAppStore()
   const prefersReducedMotion = useReducedMotion()
-  const collegeStats = getCollegeStats(selectedDate)
-  const deptStats = getAllDepartmentStats(selectedDate)
+
+  const [data, setData] = useState<DeanDashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch dashboard data
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchData() {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const result = await getDeanDashboard(selectedDate, threshold)
+        if (!cancelled) {
+          setData(result)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          if (err instanceof ApiError) {
+            setError(err.message)
+          } else {
+            setError('Failed to load dashboard data')
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDate, threshold])
 
   // Ranked departments for bullet bars
   const rankedDepts = useMemo(() => {
-    return [...deptStats]
-      .sort((a, b) => b.averagePercentage - a.averagePercentage)
-      .map((stat, index) => {
-        const dept = departments.find((d) => d.id === stat.departmentId)
-        return {
-          id: stat.departmentId,
-          name: dept?.code ?? stat.departmentId.toUpperCase(),
-          value: stat.averagePercentage,
-          rank: index + 1,
-        }
-      })
-  }, [deptStats])
+    if (!data) return []
+    return data.department_rankings.map((dept) => ({
+      id: String(dept.department_id),
+      name: dept.department_code,
+      value: dept.percentage ?? 0,
+      rank: dept.rank,
+    }))
+  }, [data])
 
-  // Chronic offenders
-  const chronicOffenders = useMemo(() => getChronicOffenders(3, threshold), [threshold])
-
-  // Biggest drop
-  const biggestDrop = useMemo(() => getBiggestSingleDayDrop(selectedDate), [selectedDate])
-
-  // Mock streak data for institution
+  // Streak data from trend
   const streakData = useMemo(() => {
-    const days = []
-    const today = new Date(selectedDate)
-    for (let i = 19; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toISOString().split('T')[0]
-      // Simulate some variation
-      const pct = 70 + Math.random() * 20
-      days.push({ date: dateStr, percentage: pct })
-    }
-    return days
-  }, [selectedDate])
+    if (!data) return []
+    return data.trend.map((t) => ({
+      date: t.date,
+      percentage: t.percentage ?? 0,
+    }))
+  }, [data])
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-pulse text-muted">Loading dashboard...</div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error || !data) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-fail">{error || 'No data available'}</div>
+      </div>
+    )
+  }
 
   return (
     <motion.div
@@ -68,7 +102,7 @@ export function DeanView() {
       {/* Header */}
       <motion.div variants={panelVariants}>
         <h1 className="view-title">Institution Overview</h1>
-        <p className="view-subtitle">All departments · {selectedDate}</p>
+        <p className="view-subtitle">{data.school_name} - {selectedDate}</p>
       </motion.div>
 
       {/* Hero Cards with animated numbers */}
@@ -81,17 +115,19 @@ export function DeanView() {
         >
           <div className="hero-card-label">Overall Attendance</div>
           <AnimatedHeroNumber
-            value={collegeStats.overallPercentage}
+            value={data.stats.percentage ?? 0}
             threshold={threshold}
             isLead
           />
           <div className="hero-meta">
-            <AnimatedCount value={collegeStats.totalPresent} /> / {collegeStats.totalStrength} students
+            <AnimatedCount value={data.stats.total_present} /> / {data.stats.total_strength} students
           </div>
           {/* Streak strip */}
-          <div className="mt-3">
-            <StreakStrip data={streakData} threshold={threshold} />
-          </div>
+          {streakData.length > 0 && (
+            <div className="mt-3">
+              <StreakStrip data={streakData} threshold={threshold} />
+            </div>
+          )}
         </motion.div>
 
         {/* Below threshold */}
@@ -103,12 +139,12 @@ export function DeanView() {
           <div className="hero-card-label">Below {threshold}%</div>
           <div className={cn(
             'hero-big',
-            collegeStats.classesBelow75Count > 0 ? 'fail' : ''
+            data.stats.classes_below > 0 ? 'fail' : ''
           )}>
-            <AnimatedCount value={collegeStats.classesBelow75Count} />
+            <AnimatedCount value={data.stats.classes_below} />
           </div>
           <div className="hero-meta">
-            of {collegeStats.totalClasses} classes
+            of {data.stats.total_classes} classes
           </div>
         </motion.div>
 
@@ -121,12 +157,12 @@ export function DeanView() {
           <div className="hero-card-label">Depts Below {threshold}%</div>
           <div className={cn(
             'hero-big',
-            rankedDepts.filter((d) => d.value < threshold).length > 0 ? 'fail' : ''
+            data.stats.departments_below_threshold > 0 ? 'fail' : ''
           )}>
-            <AnimatedCount value={rankedDepts.filter((d) => d.value < threshold).length} />
+            <AnimatedCount value={data.stats.departments_below_threshold} />
           </div>
           <div className="hero-meta">
-            of {departments.length} departments
+            of {data.stats.total_departments} departments
           </div>
         </motion.div>
 
@@ -137,18 +173,18 @@ export function DeanView() {
           transition={{ duration: TIMING.fast }}
         >
           <div className="hero-card-label">Biggest Drop</div>
-          {biggestDrop ? (
+          {data.biggest_drop ? (
             <>
               <div className="hero-big fail">
-                -<AnimatedCount value={biggestDrop.drop} /><small>%</small>
+                -<AnimatedCount value={data.biggest_drop.drop} /><small>%</small>
               </div>
               <div className="hero-meta">
-                {biggestDrop.section.name} ({biggestDrop.department.code})
+                {data.biggest_drop.section_name} ({data.biggest_drop.department_code})
               </div>
             </>
           ) : (
             <>
-              <div className="hero-big">—</div>
+              <div className="hero-big">-</div>
               <div className="hero-meta">No significant drops</div>
             </>
           )}
@@ -159,7 +195,7 @@ export function DeanView() {
       <div className="content-grid" style={{ gridTemplateColumns: '1fr 320px' }}>
         {/* Left column - Heatmap */}
         <motion.div variants={panelVariants}>
-          <AnimatedHeatmap />
+          <AnimatedHeatmap apiData={data.heatmap} />
         </motion.div>
 
         {/* Right column - Sidebar */}
@@ -181,13 +217,13 @@ export function DeanView() {
               <span className="panel-title">Chronic Below {threshold}%</span>
               <span className="panel-subtitle">3+ days</span>
             </div>
-            {chronicOffenders.length === 0 ? (
+            {data.chronic_offenders.length === 0 ? (
               <p className="text-muted text-sm">No chronic offenders</p>
             ) : (
               <div className="space-y-2">
-                {chronicOffenders.slice(0, 5).map((offender, index) => (
+                {data.chronic_offenders.slice(0, 5).map((offender, index) => (
                   <motion.div
-                    key={offender.sectionId}
+                    key={offender.section_id}
                     className="flex items-center justify-between py-2 border-t border-line first:border-0"
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -197,8 +233,8 @@ export function DeanView() {
                     }}
                   >
                     <div>
-                      <div className="font-semibold text-sm">{offender.section.name}</div>
-                      <div className="text-xs text-muted">{offender.department.code}</div>
+                      <div className="font-semibold text-sm">{offender.section_name}</div>
+                      <div className="text-xs text-muted">{offender.department_code}</div>
                     </div>
                     <motion.div
                       className="stat-tag fail"
@@ -209,7 +245,7 @@ export function DeanView() {
                         ...SPRING.snappy,
                       }}
                     >
-                      {offender.consecutiveDaysBelow75} days
+                      {offender.consecutive_days} days
                     </motion.div>
                   </motion.div>
                 ))}

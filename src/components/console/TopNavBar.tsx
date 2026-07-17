@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Calendar, Download, ChevronDown, ChevronRight, Sun, Moon } from 'lucide-react'
+import { Calendar, Download, ChevronDown, ChevronRight, Sun, Moon, LogOut, User } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
+import { useAuthContext } from '@/contexts/AuthContext'
 import { workingDays, departments, getAllDepartmentStats, getCollegeStats } from '@/data/store'
+import { getSummaryCsvUrl, downloadWithAuth } from '@/api'
 import {
   Select,
   SelectContent,
@@ -26,12 +28,12 @@ export function TopNavBar() {
     selectedDate,
     setSelectedDate,
     role,
-    setRole,
     theme,
     toggleTheme,
     threshold,
     showToast,
   } = useAppStore()
+  const { user, logout } = useAuthContext()
 
   const prefersReducedMotion = useReducedMotion()
   const [scopeOpen, setScopeOpen] = useState(false)
@@ -53,8 +55,14 @@ export function TopNavBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleExport = () => {
-    showToast('PDF exported successfully', 'success')
+  const handleExport = async () => {
+    try {
+      const url = getSummaryCsvUrl(selectedDate)
+      await downloadWithAuth(url, `summary_${selectedDate}.csv`)
+      showToast('CSV exported successfully', 'success')
+    } catch (error) {
+      showToast('Export failed', 'error')
+    }
   }
 
   // Get department stats for dropdown
@@ -156,26 +164,11 @@ export function TopNavBar() {
 
       <div className="top-nav-spacer" />
 
-      {/* Role Segment */}
-      <div className="role-segment">
-        <button
-          className={role === 'teacher' ? 'active' : ''}
-          onClick={() => setRole('teacher')}
-        >
-          Teacher
-        </button>
-        <button
-          className={role === 'hod' ? 'active' : ''}
-          onClick={() => setRole('hod')}
-        >
-          HOD
-        </button>
-        <button
-          className={role === 'dean' ? 'active' : ''}
-          onClick={() => setRole('dean')}
-        >
-          Dean
-        </button>
+      {/* User Info & Role */}
+      <div className="user-info">
+        <User className="w-3.5 h-3.5 text-muted" />
+        <span className="user-name">{user?.name || 'User'}</span>
+        <span className="user-role">{role.toUpperCase()}</span>
       </div>
 
       {/* Date Selector */}
@@ -213,6 +206,18 @@ export function TopNavBar() {
       <button className="export-btn" onClick={handleExport}>
         <Download className="h-3.5 w-3.5" />
         Export
+      </button>
+
+      {/* Logout Button */}
+      <button
+        className="pill-btn text-fail hover:bg-fail/10"
+        onClick={() => {
+          logout()
+          window.location.href = '/login'
+        }}
+        title="Sign out"
+      >
+        <LogOut className="h-3.5 w-3.5" />
       </button>
     </nav>
   )
