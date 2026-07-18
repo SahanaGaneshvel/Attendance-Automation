@@ -299,37 +299,51 @@ export function StreakStrip({ data, threshold }: StreakStripProps) {
   const days = data.slice(-20)
 
   return (
-    <motion.div
-      className="flex gap-1"
-      variants={streakContainerVariants}
-      initial="initial"
-      animate="animate"
-    >
-      {days.map((day, index) => {
-        const isPass = day.percentage !== null && day.percentage >= threshold
-        const isFail = day.percentage !== null && day.percentage < threshold
-        const isNone = day.percentage === null
+    <div>
+      <motion.div
+        className="flex"
+        style={{ gap: '3px' }}
+        variants={streakContainerVariants}
+        initial="initial"
+        animate="animate"
+      >
+        {days.map((day, index) => {
+          const isPass = day.percentage !== null && day.percentage >= threshold
+          const isFail = day.percentage !== null && day.percentage < threshold
+          const isNone = day.percentage === null
 
-        return (
-          <motion.div
-            key={day.date}
-            className={cn(
-              'w-3 h-6 rounded-sm',
-              isPass && 'bg-pass',
-              isFail && 'bg-fail',
-              isNone && 'bg-none'
-            )}
-            title={`${day.date}: ${day.percentage !== null ? Math.round(day.percentage) + '%' : 'No session'}`}
-            variants={streakDayVariants}
-            custom={index}
-            transition={{
-              delay: prefersReducedMotion ? 0 : index * 0.02,
-              ...SPRING.snappy,
-            }}
-          />
-        )
-      })}
-    </motion.div>
+          return (
+            <motion.div
+              key={day.date}
+              className={cn(
+                'w-3 h-3 rounded-[3px]',
+                isPass && 'bg-pass',
+                isFail && 'bg-fail',
+                isNone && 'bg-nosession'
+              )}
+              title={`${day.date}: ${day.percentage !== null ? Math.round(day.percentage) + '%' : 'No session'}`}
+              variants={streakDayVariants}
+              custom={index}
+              transition={{
+                delay: prefersReducedMotion ? 0 : index * 0.02,
+                ...SPRING.snappy,
+              }}
+            />
+          )
+        })}
+      </motion.div>
+      <div className="flex items-center gap-3 mt-2">
+        <span className="flex items-center gap-1 text-[10px] text-ink-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-pass" /> Above {threshold}%
+        </span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-fail" /> Below {threshold}%
+        </span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-nosession" /> No session
+        </span>
+      </div>
+    </div>
   )
 }
 

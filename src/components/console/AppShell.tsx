@@ -2,23 +2,29 @@ import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@/store/appStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { TopNavBar, KPIStrip } from './TopNavBar'
+import { Sidebar } from '@/components/layout/Sidebar'
+import { DashboardHeader } from '@/components/layout/DashboardHeader'
 import { DeanView } from './views/DeanView'
 import { HodView } from './views/HodView'
 import { TeacherView } from './views/TeacherView'
 import { Toast } from '@/components/layout/Toast'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
+const HEADER_COPY = {
+  dean: { title: 'School Overview', subtitle: 'Institution-wide attendance analytics' },
+  hod: { title: 'Department Dashboard', subtitle: 'Faculty & section attendance for your department' },
+  teacher: { title: 'My Classes', subtitle: "Today's attendance and history" },
+  admin: { title: 'System Overview', subtitle: 'Administration console' },
+}
+
 export function AppShell() {
   const { theme, role } = useAppStore()
   const prefersReducedMotion = useReducedMotion()
 
-  // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  // Render the appropriate view based on role
   const renderView = () => {
     switch (role) {
       case 'teacher':
@@ -31,19 +37,15 @@ export function AppShell() {
     }
   }
 
+  const copy = HEADER_COPY[role] ?? HEADER_COPY.dean
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="app-shell">
-        {/* Top Navigation Bar - full width */}
-        <TopNavBar />
-
-        {/* KPI Strip - contextual metrics */}
-        <KPIStrip />
-
-        {/* Main Content - full width, scrollable */}
-        <main className="main-content">
-          <div className="scroll-content">
-            {/* Animate view transitions */}
+      <div className="app-shell-v2">
+        <Sidebar />
+        <div className="app-main">
+          <DashboardHeader title={copy.title} subtitle={copy.subtitle} />
+          <main className="page">
             <AnimatePresence mode="wait">
               <motion.div
                 key={role}
@@ -55,8 +57,8 @@ export function AppShell() {
                 {renderView()}
               </motion.div>
             </AnimatePresence>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
       <Toast />
     </TooltipProvider>

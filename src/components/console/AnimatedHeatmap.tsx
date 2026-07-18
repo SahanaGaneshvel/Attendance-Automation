@@ -20,7 +20,9 @@ interface CellData {
   sectionName: string
   deptCode: string
   percentage: number | null
-  status: 'recorded' | 'no_session' | 'pending'
+  present: number | null
+  strength: number | null
+  status: 'recorded' | 'no_session' | 'pending' | 'empty'
   row: number
   col: number
 }
@@ -37,28 +39,30 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
   const [selectedCell, setSelectedCell] = useState<CellData | null>(null)
   const [animationKey, setAnimationKey] = useState(0)
 
-  // Build matrix data - use API data if provided, otherwise fall back to mock
+  // Build matrix data - use API data if provided, otherwise fall back to mock.
+  // Column count is derived from the data itself (max sections any dept actually
+  // has), never a hardcoded number — this is what keeps phantom columns out.
   const matrixData = useMemo(() => {
     if (apiData && apiData.length > 0) {
-      // Use API data
-      const maxSections = 5
-      return apiData.slice(0, 6).map((dept, rowIndex) => {
-        const deptSections = dept.sections.slice(0, maxSections)
+      const rows = apiData.slice(0, 6)
+      const maxCols = Math.max(1, ...rows.map((d) => d.sections.length))
 
-        const cells: CellData[] = deptSections.map((section, colIndex) => ({
+      return rows.map((dept, rowIndex) => {
+        const cells: CellData[] = dept.sections.map((section, colIndex) => ({
           id: `${dept.department_id}-${section.section_id}`,
           sectionId: String(section.section_id),
           deptId: String(dept.department_id),
           sectionName: section.name,
           deptCode: dept.department_code,
           percentage: section.percentage,
+          present: null,
+          strength: null,
           status: section.status,
           row: rowIndex,
           col: colIndex,
         }))
 
-        // Pad with empty cells if needed
-        while (cells.length < maxSections) {
+        while (cells.length < maxCols) {
           cells.push({
             id: `${dept.department_id}-empty-${cells.length}`,
             sectionId: '',
@@ -66,13 +70,14 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
             sectionName: '',
             deptCode: dept.department_code,
             percentage: null,
-            status: 'pending',
+            present: null,
+            strength: null,
+            status: 'empty',
             row: rowIndex,
             col: cells.length,
           })
         }
 
-        // Calculate total strength
         const totalStrength = dept.sections.reduce((sum, s) => sum + s.strength, 0)
 
         return {
@@ -81,21 +86,21 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
             name: dept.department_name,
             code: dept.department_code,
           },
-          deptStats: {
-            averagePercentage: dept.percentage,
-          },
+          deptStats: { averagePercentage: dept.percentage },
           totalStrength,
           cells,
+          colCount: maxCols,
         }
       })
     }
 
     // Fall back to mock data
     const deptList = departments.slice(0, 6)
-    const maxSections = 5
+    const deptSectionLists = deptList.map((dept) => sections.filter((s) => s.departmentId === dept.id))
+    const maxCols = Math.max(1, ...deptSectionLists.map((list) => list.length))
 
     return deptList.map((dept, rowIndex) => {
-      const deptSections = sections.filter((s) => s.departmentId === dept.id).slice(0, maxSections)
+      const deptSections = deptSectionLists[rowIndex]
       const deptStats = getDepartmentDailyStats(dept.id, selectedDate)
 
       const cells: CellData[] = deptSections.map((section, colIndex) => {
@@ -107,14 +112,15 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
           sectionName: section.name,
           deptCode: dept.code,
           percentage: attendance?.percentage ?? null,
+          present: attendance?.present ?? null,
+          strength: attendance?.strength ?? section.strength,
           status: attendance?.status ?? 'pending',
           row: rowIndex,
           col: colIndex,
         }
       })
 
-      // Pad with empty cells if needed
-      while (cells.length < maxSections) {
+      while (cells.length < maxCols) {
         cells.push({
           id: `${dept.id}-empty-${cells.length}`,
           sectionId: '',
@@ -122,20 +128,22 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
           sectionName: '',
           deptCode: dept.code,
           percentage: null,
-          status: 'pending',
+          present: null,
+          strength: null,
+          status: 'empty',
           row: rowIndex,
           col: cells.length,
         })
       }
 
-      const totalStrength = cells.reduce((sum, c) => {
-        const sec = sections.find((s) => s.id === c.sectionId)
-        return sum + (sec?.strength ?? 0)
-      }, 0)
+      const totalStrength = deptSections.reduce((sum, s) => sum + s.strength, 0)
 
-      return { dept, deptStats, totalStrength, cells }
+      return { dept, deptStats, totalStrength, cells, colCount: maxCols }
     })
   }, [selectedDate, apiData])
+
+  const colCount = matrixData[0]?.colCount ?? 0
+  const colLetters = Array.from({ length: colCount }, (_, i) => String.fromCharCode(65 + i))
 
   // Trigger ripple animation on date change
   useMemo(() => {
@@ -143,7 +151,7 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
   }, [selectedDate, threshold])
 
   const handleCellClick = useCallback((cell: CellData) => {
-    if (cell.percentage === null) return
+    if (cell.status !== 'recorded') return
     setSelectedCell(cell)
     onDrillDown?.(cell.sectionId)
   }, [onDrillDown])
@@ -163,16 +171,17 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
 
   // Helper to get cell display
   const getCellDisplay = (cell: CellData) => {
+    if (cell.status === 'empty') return ''
     if (cell.status === 'no_session') return 'NS'
-    if (cell.status === 'pending') return '-'
+    if (cell.status === 'pending') return 'PEND'
     if (cell.percentage !== null) return Math.round(cell.percentage)
-    return '-'
+    return ''
   }
 
   const getCellClass = (cell: CellData) => {
-    if (cell.status === 'no_session' || cell.status === 'pending' || cell.percentage === null) {
-      return 'none'
-    }
+    if (cell.status === 'empty') return 'empty'
+    if (cell.status === 'no_session') return 'nosession'
+    if (cell.status === 'pending' || cell.percentage === null) return 'pending'
     return cell.percentage >= threshold ? 'pass' : 'fail'
   }
 
@@ -188,9 +197,9 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
           <table className="matrix-table">
             <thead>
               <tr>
-                <th className="left">Department</th>
+                <th className="left sticky-col">Department</th>
                 <th>Avg</th>
-                {['A', 'B', 'C', 'D', 'E'].map((letter, colIndex) => (
+                {colLetters.map((letter, colIndex) => (
                   <th
                     key={letter}
                     className={cn(
@@ -219,7 +228,7 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
                   }}
                 >
                   {/* Department name */}
-                  <td>
+                  <td className="sticky-col">
                     <div className="matrix-row-name">
                       {row.dept.name}
                       <span className="matrix-row-strength">
@@ -250,44 +259,42 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
                   </td>
 
                   {/* Section cells */}
-                  {row.cells.map((cell, colIndex) => (
-                    <td key={cell.id}>
-                      <motion.div
-                        layoutId={cell.sectionId ? `cell-${cell.sectionId}` : undefined}
-                        className={cn(
-                          'matrix-cell',
-                          getCellClass(cell),
-                          isCellHighlighted(rowIndex, colIndex) && 'ring-2 ring-accent'
+                  {row.cells.map((cell, colIndex) => {
+                    const isEmpty = cell.status === 'empty'
+                    const isInteractive = cell.status === 'recorded'
+                    return (
+                      <td key={cell.id}>
+                        {isEmpty ? (
+                          <div className="matrix-cell empty" aria-hidden="true" />
+                        ) : (
+                          <motion.div
+                            layoutId={cell.sectionId ? `cell-${cell.sectionId}` : undefined}
+                            className={cn(
+                              'matrix-cell',
+                              getCellClass(cell),
+                              isCellHighlighted(rowIndex, colIndex) && 'ring-2 ring-accent'
+                            )}
+                            initial={{ scale: 0.85, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            whileHover={isInteractive ? { y: -1, boxShadow: 'var(--panel-shadow-lg)' } : undefined}
+                            transition={{
+                              delay: prefersReducedMotion ? 0 : getRippleDelay(rowIndex, colIndex),
+                              ...SPRING.snappy,
+                            }}
+                            onClick={() => handleCellClick(cell)}
+                            onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
+                            onMouseLeave={handleCellLeave}
+                            key={`${cell.id}-${animationKey}`}
+                          >
+                            <span className="matrix-cell-value">{getCellDisplay(cell)}</span>
+                            {isInteractive && cell.present !== null && cell.strength !== null && (
+                              <span className="matrix-cell-sub">{cell.present}/{cell.strength}</span>
+                            )}
+                          </motion.div>
                         )}
-                        initial={{ scale: 0.85, opacity: 0 }}
-                        animate={{
-                          scale: 1,
-                          opacity: 1,
-                        }}
-                        whileHover={
-                          cell.percentage !== null
-                            ? {
-                                y: -2,
-                                boxShadow: 'var(--panel-shadow-lg)',
-                                scale: 1.02,
-                              }
-                            : undefined
-                        }
-                        transition={{
-                          delay: prefersReducedMotion
-                            ? 0
-                            : getRippleDelay(rowIndex, colIndex),
-                          ...SPRING.snappy,
-                        }}
-                        onClick={() => handleCellClick(cell)}
-                        onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
-                        onMouseLeave={handleCellLeave}
-                        key={`${cell.id}-${animationKey}`}
-                      >
-                        {getCellDisplay(cell)}
-                      </motion.div>
-                    </td>
-                  ))}
+                      </td>
+                    )
+                  })}
 
                   {/* Mini sparkline */}
                   <td>
@@ -307,7 +314,7 @@ export function AnimatedHeatmap({ onDrillDown, apiData }: HeatmapProps) {
 
       {/* Drill-down detail panel (shared layout animation) */}
       <AnimatePresence>
-        {selectedCell && selectedCell.percentage !== null && (
+        {selectedCell && selectedCell.status === 'recorded' && (
           <DrillDownPanel
             cell={selectedCell}
             threshold={threshold}

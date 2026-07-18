@@ -1,28 +1,40 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+} from 'recharts'
+import { Users2, ClipboardCheck, Trophy } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { useAuthContext } from '@/contexts/AuthContext'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { useCountUp } from '@/hooks/useCountUp'
 import { getHodDashboard, type HodDashboardData } from '@/api'
 import { cn } from '@/lib/utils'
-import { SPRING, TIMING, staggerContainer, panelVariants } from '@/lib/motion'
-import { BulletBars, SmallMultiples } from '../AnimatedWidgets'
+import { staggerContainer, panelVariants } from '@/lib/motion'
 import { AlertsPanel } from '../AlertsPanel'
+import { StatCard } from '@/components/ui/StatCard'
+import { SectionCard, ChartCard } from '@/components/ui/ChartCard'
+import { StatusBadge, thresholdBadge } from '@/components/ui/StatusBadge'
+import { LoadingState, CardSkeleton } from '@/components/ui/EmptyState'
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable'
 
 export function HodView() {
   const { selectedDate, threshold } = useAppStore()
   const { user } = useAuthContext()
-  const prefersReducedMotion = useReducedMotion()
 
-  // Dashboard state
   const [dashboardData, setDashboardData] = useState<HodDashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Get department name from auth context
   const myDeptName = user?.scope?.department_name ?? 'Department'
 
-  // Fetch dashboard data
   const fetchDashboard = useCallback(async () => {
     if (!user?.scope?.department_id) return
     setIsLoading(true)
@@ -40,16 +52,6 @@ export function HodView() {
     fetchDashboard()
   }, [fetchDashboard])
 
-  // Loading state
-  if (isLoading && !dashboardData) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted">Loading...</div>
-      </div>
-    )
-  }
-
-  // Extract data for display
   const stats = dashboardData?.stats ?? {
     percentage: 0,
     total_present: 0,
@@ -65,346 +67,170 @@ export function HodView() {
   const sections = dashboardData?.sections ?? []
   const peerComparison = dashboardData?.peer_comparison ?? []
 
-  // Transform sections for table display
-  const sectionStats = sections.map((s) => ({
+  const sectionRows = sections.map((s) => ({
     id: s.section_id,
     name: s.section_name,
     strength: s.strength,
     percentage: s.percentage ?? 0,
     present: s.present ?? 0,
-    absent: s.absent ?? 0,
     reported: s.status === 'recorded',
     isNoSession: s.status === 'no_session',
-    values: s.trend,
   }))
 
-  // Transform peer comparison for bullet bars
-  const peerBars = peerComparison.map((p) => ({
-    id: String(p.department_id),
-    name: p.department_code,
-    value: p.percentage ?? 0,
-    rank: p.rank,
-    isMe: p.is_mine,
-  }))
+  const peerBarData = useMemo(
+    () => peerComparison.map((p) => ({ name: p.department_code, value: p.percentage ?? 0, isMe: p.is_mine, pass: (p.percentage ?? 0) >= threshold })),
+    [peerComparison, threshold]
+  )
 
-  const pendingCount = stats.pending_count
-  const belowThresholdCount = stats.below_threshold_count
+  const trendLineData = useMemo(
+    () =>
+      (dashboardData?.trend ?? []).map((t) => ({
+        date: t.date.slice(5),
+        value: t.status === 'recorded' ? t.percentage : null,
+      })),
+    [dashboardData]
+  )
+
   const totalSections = sections.length
   const reportedCount = stats.recorded_count + stats.no_session_count
 
+  const sectionColumns: DataTableColumn<(typeof sectionRows)[number]>[] = [
+    { key: 'name', header: 'Section', render: (r) => <span className="font-semibold text-ink">{r.name}</span> },
+    { key: 'strength', header: 'Strength', align: 'right', render: (r) => r.strength },
+    { key: 'present', header: 'Present', align: 'right', render: (r) => (r.reported ? r.present : '—') },
+    {
+      key: 'pct',
+      header: 'Attendance',
+      align: 'right',
+      render: (r) =>
+        r.reported ? (
+          <span className={cn('font-mono font-bold', r.percentage >= threshold ? 'text-pass' : 'text-fail')}>
+            {r.percentage.toFixed(1)}%
+          </span>
+        ) : (
+          <span className="text-faint">—</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (r) =>
+        r.reported ? (
+          <StatusBadge tone={r.percentage >= threshold ? 'pass' : 'fail'}>Reported</StatusBadge>
+        ) : r.isNoSession ? (
+          <StatusBadge tone="neutral">No session</StatusBadge>
+        ) : (
+          <StatusBadge tone="warn">Pending</StatusBadge>
+        ),
+    },
+  ]
+
+  if (isLoading && !dashboardData) {
+    return (
+      <div className="page-grid grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => <CardSkeleton key={i} />)}
+        <div style={{ gridColumn: '1 / -1' }}><LoadingState rows={6} /></div>
+      </div>
+    )
+  }
+
+  const overallBadge = thresholdBadge(stats.percentage ?? 0, threshold)
+
   return (
-    <motion.div
-      className="space-y-5"
-      variants={staggerContainer}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Header */}
-      <motion.div variants={panelVariants}>
-        <h1 className="view-title">{dashboardData?.department_name ?? myDeptName}</h1>
-        <p className="view-subtitle">HOD Dashboard · {selectedDate}</p>
+    <motion.div className="flex flex-col gap-5" variants={staggerContainer} initial="hidden" animate="visible">
+      <motion.div className="page-grid grid-cols-3" variants={panelVariants}>
+        <StatCard
+          label="Department Attendance"
+          value={(stats.percentage ?? 0).toFixed(1)}
+          suffix="%"
+          icon={<Users2 className="w-4.5 h-4.5" />}
+          accent={overallBadge.tone === 'pass' ? 'emerald' : overallBadge.tone === 'fail' ? 'red' : 'amber'}
+          footnote={`${stats.total_present} / ${stats.total_strength} students`}
+        />
+        <StatCard
+          label="Rank Among Departments"
+          value={`#${stats.my_rank}`}
+          icon={<Trophy className="w-4.5 h-4.5" />}
+          accent="indigo"
+          footnote={`of ${stats.total_departments} departments`}
+        />
+        <StatCard
+          label="Reporting Status"
+          value={`${reportedCount}/${totalSections}`}
+          icon={<ClipboardCheck className="w-4.5 h-4.5" />}
+          accent={stats.pending_count > 0 ? 'amber' : 'emerald'}
+          footnote={stats.pending_count === 0 ? 'All sections reported' : `${stats.pending_count} pending`}
+        />
       </motion.div>
 
-      {/* Hero Cards */}
-      <motion.div className="hero-grid hod" variants={panelVariants}>
-        {/* Lead card - Department attendance */}
-        <motion.div
-          className="hero-card lead"
-          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
-          transition={{ duration: TIMING.fast }}
-        >
-          <div className="hero-card-label">Department Attendance</div>
-          <AnimatedHeroNumber
-            value={stats.percentage ?? 0}
-            threshold={threshold}
-          />
-          <div className="hero-meta">
-            <AnimatedCount value={stats.total_present} /> / {stats.total_strength} students
-          </div>
-          <div className="stat-tags">
-            <motion.span
-              className="stat-tag pass"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={SPRING.snappy}
-            >
-              Rank #{stats.my_rank}
-            </motion.span>
-            {belowThresholdCount > 0 && (
-              <motion.span
-                className="stat-tag fail"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ ...SPRING.snappy, delay: 0.1 }}
-              >
-                {belowThresholdCount} below {threshold}%
-              </motion.span>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Sections below threshold */}
-        <motion.div
-          className="hero-card"
-          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
-          transition={{ duration: TIMING.fast }}
-        >
-          <div className="hero-card-label">Below {threshold}%</div>
-          <div className={cn('hero-big', belowThresholdCount > 0 ? 'fail' : '')}>
-            <AnimatedCount value={belowThresholdCount} />
-          </div>
-          <div className="hero-meta">of {totalSections} sections</div>
-        </motion.div>
-
-        {/* Reporting compliance */}
-        <motion.div
-          className="hero-card"
-          whileHover={prefersReducedMotion ? {} : { y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
-          transition={{ duration: TIMING.fast }}
-        >
-          <div className="hero-card-label">Reporting Status</div>
-          <div className={cn('hero-big', pendingCount > 0 ? 'warn' : 'pass')}>
-            <AnimatedCount value={reportedCount} />/{totalSections}
-          </div>
-          <div className="hero-meta">
-            {pendingCount === 0 ? 'All reported' : `${pendingCount} pending`}
-          </div>
-        </motion.div>
-      </motion.div>
-
-      {/* Main content grid */}
-      <div className="content-grid" style={{ gridTemplateColumns: '1fr 340px' }}>
-        {/* Left column */}
-        <motion.div className="flex flex-col gap-4" variants={panelVariants}>
-          {/* Sections Table with animations */}
-          <div className="panel no-pad">
-            <div className="panel-header in-pad">
-              <span className="panel-title">My Sections Today</span>
-              <span className="panel-subtitle">{totalSections} sections</span>
-            </div>
-            <table className="matrix-table">
-              <thead>
-                <tr>
-                  <th className="left">Section</th>
-                  <th>Strength</th>
-                  <th>Present</th>
-                  <th>%</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sectionStats.map((section, index) => (
-                  <motion.tr
-                    key={section.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      delay: prefersReducedMotion ? 0 : index * TIMING.stagger * 2,
-                      ...SPRING.smooth,
-                    }}
-                  >
-                    <td>
-                      <div className="matrix-row-name">{section.name}</div>
-                    </td>
-                    <td className="text-center font-data text-sm">{section.strength}</td>
-                    <td className="text-center font-data text-sm">
-                      {section.reported ? section.present : '—'}
-                    </td>
-                    <td>
-                      {section.reported ? (
-                        <motion.div
-                          className={cn(
-                            'matrix-cell',
-                            section.percentage >= threshold ? 'pass' : 'fail'
-                          )}
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          whileHover={{ y: -2, boxShadow: 'var(--panel-shadow-lg)' }}
-                          transition={SPRING.snappy}
-                        >
-                          {Math.round(section.percentage)}
-                        </motion.div>
-                      ) : section.isNoSession ? (
-                        <div className="matrix-cell none">N/S</div>
-                      ) : (
-                        <div className="matrix-cell none">—</div>
-                      )}
-                    </td>
-                    <td className="text-center">
-                      {section.reported ? (
-                        <motion.span
-                          className="compliance-status ok"
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={SPRING.snappy}
-                        >
-                          Done
-                        </motion.span>
-                      ) : section.isNoSession ? (
-                        <span className="compliance-status" style={{ color: 'var(--muted)' }}>
-                          No Session
-                        </span>
-                      ) : (
-                        <span className="compliance-status pending">Pending</span>
-                      )}
-                    </td>
-                  </motion.tr>
+      <motion.div className="page-grid" style={{ gridTemplateColumns: '1fr 1fr' }} variants={panelVariants}>
+        <ChartCard title="Peer Departments" subtitle="Today's ranking vs your department" height={220}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={peerBarData} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} width={30} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid var(--line)', fontSize: 12 }} formatter={(v: number) => [`${v.toFixed(1)}%`, 'Attendance']} />
+              <ReferenceLine y={threshold} stroke="var(--line-2)" strokeDasharray="4 4" />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={40}>
+                {peerBarData.map((d) => (
+                  <Cell key={d.name} fill={d.isMe ? 'var(--accent)' : d.pass ? 'var(--pass)' : 'var(--fail)'} />
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-          {/* Section Sparklines (Small Multiples) */}
-          <div className="panel">
-            <div className="panel-header">
-              <span className="panel-title">Section Trends</span>
-              <span className="panel-subtitle">Last 10 days</span>
-            </div>
-            <SmallMultiples
-              data={sectionStats
-                .filter((s) => s.values.length > 0)
-                .map((s) => ({
-                  id: String(s.id),
-                  name: s.name,
-                  values: s.values,
-                }))}
-              threshold={threshold}
+        <ChartCard title="Department Trend" subtitle="Last 20 recorded days" height={220}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={trendLineData} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} width={30} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid var(--line)', fontSize: 12 }} formatter={(v: number) => [`${v?.toFixed(1) ?? '—'}%`, 'Attendance']} />
+              <ReferenceLine y={threshold} stroke="var(--line-2)" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5} dot={false} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </motion.div>
+
+      <div className="page-grid" style={{ gridTemplateColumns: '1fr 320px' }}>
+        <motion.div variants={panelVariants}>
+          <SectionCard title="My Sections Today" subtitle={`${totalSections} sections`} noPad>
+            <DataTable
+              columns={sectionColumns}
+              rows={sectionRows}
+              searchPlaceholder="Search sections…"
+              filterFn={(r, q) => r.name.toLowerCase().includes(q.toLowerCase())}
             />
-          </div>
+          </SectionCard>
         </motion.div>
 
-        {/* Right column */}
         <motion.div className="flex flex-col gap-4" variants={panelVariants}>
-          {/* Alerts */}
           <AlertsPanel />
-
-          {/* Peer Comparison with bullet bars */}
-          <div className="panel">
-            <div className="panel-header">
-              <span className="panel-title">Peer Departments</span>
-              <span className="panel-subtitle">Today's ranking</span>
+          <SectionCard title="Department Snapshot" subtitle={myDeptName}>
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">Recorded</span>
+                <span className="font-mono font-semibold text-ink">{stats.recorded_count}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">Pending</span>
+                <span className="font-mono font-semibold text-warn">{stats.pending_count}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">No session</span>
+                <span className="font-mono font-semibold text-faint">{stats.no_session_count}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">Below threshold</span>
+                <span className="font-mono font-semibold text-fail">{stats.below_threshold_count}</span>
+              </div>
             </div>
-            <BulletBars data={peerBars} threshold={threshold} />
-          </div>
-
-          {/* Department Trend */}
-          <div className="panel">
-            <div className="panel-header">
-              <span className="panel-title">Department Trend</span>
-              <span className="panel-subtitle">Last 20 days</span>
-            </div>
-            <div className="mt-3">
-              <DeptTrendLine
-                data={(dashboardData?.trend ?? [])
-                  .filter((t) => t.status === 'recorded' && t.percentage !== null)
-                  .map((t) => t.percentage as number)}
-                threshold={threshold}
-              />
-            </div>
-          </div>
+          </SectionCard>
         </motion.div>
       </div>
     </motion.div>
-  )
-}
-
-// Animated hero number component
-function AnimatedHeroNumber({
-  value,
-  threshold,
-}: {
-  value: number
-  threshold: number
-}) {
-  const displayValue = useCountUp(value, { duration: 500, decimals: 1 })
-  const isPass = value >= threshold
-
-  return (
-    <div className={cn('hero-big', isPass ? 'pass' : 'fail')}>
-      {displayValue.toFixed(1)}<small>%</small>
-    </div>
-  )
-}
-
-// Animated count
-function AnimatedCount({ value }: { value: number }) {
-  const displayValue = useCountUp(value, { duration: 500, decimals: 0 })
-  return <>{Math.round(displayValue)}</>
-}
-
-// Department trend line
-function DeptTrendLine({
-  data,
-  threshold,
-}: {
-  data: number[]
-  threshold: number
-}) {
-  const prefersReducedMotion = useReducedMotion()
-
-  if (data.length === 0) {
-    return <div className="text-muted text-sm text-center py-4">No trend data available</div>
-  }
-
-  const width = 300
-  const height = 60
-  const padding = 4
-
-  const chartWidth = width - padding * 2
-  const chartHeight = height - padding * 2
-
-  const minVal = Math.min(...data, threshold - 10)
-  const maxVal = Math.max(...data, threshold + 10)
-  const range = maxVal - minVal || 1
-
-  const points = data.map((value, i) => ({
-    x: padding + (i / Math.max(data.length - 1, 1)) * chartWidth,
-    y: padding + chartHeight - ((value - minVal) / range) * chartHeight,
-  }))
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-  const thresholdY = padding + chartHeight - ((threshold - minVal) / range) * chartHeight
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <line
-        x1={padding}
-        y1={thresholdY}
-        x2={width - padding}
-        y2={thresholdY}
-        stroke="var(--line-2)"
-        strokeWidth={1}
-        strokeDasharray="3,3"
-      />
-      <motion.path
-        d={pathD}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{
-          duration: prefersReducedMotion ? 0 : 0.8,
-          ease: 'easeOut',
-        }}
-      />
-      {/* Latest point */}
-      {points.length > 0 && (
-        <motion.circle
-          cx={points[points.length - 1]?.x}
-          cy={points[points.length - 1]?.y}
-          r={4}
-          fill={data[data.length - 1] >= threshold ? 'var(--pass)' : 'var(--fail)'}
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{
-            delay: prefersReducedMotion ? 0 : 0.7,
-            ...SPRING.snappy,
-          }}
-        />
-      )}
-    </svg>
   )
 }

@@ -1,18 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Calendar, Download, ChevronDown, ChevronRight, Sun, Moon, LogOut, User } from 'lucide-react'
+import { Download, ChevronDown, ChevronRight, Sun, Moon, LogOut, User } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { useAuthContext } from '@/contexts/AuthContext'
-import { workingDays, departments, getAllDepartmentStats, getCollegeStats } from '@/data/store'
+import { departments, getAllDepartmentStats, getCollegeStats } from '@/data/store'
 import { getSummaryCsvUrl, downloadWithAuth } from '@/api'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { formatDate, cn } from '@/lib/utils'
+import { DatePicker } from './DatePicker'
+import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { SPRING } from '@/lib/motion'
 
@@ -171,23 +165,8 @@ export function TopNavBar() {
         <span className="user-role">{role.toUpperCase()}</span>
       </div>
 
-      {/* Date Selector */}
-      <Select value={selectedDate} onValueChange={setSelectedDate}>
-        <SelectTrigger className="pill-btn w-auto">
-          <Calendar className="h-3.5 w-3.5" />
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="z-[var(--z-dropdown)]">
-          {workingDays
-            .slice()
-            .reverse()
-            .map((date) => (
-              <SelectItem key={date} value={date}>
-                {formatDate(date)}
-              </SelectItem>
-            ))}
-        </SelectContent>
-      </Select>
+      {/* Date Selector — real calendar popover with day-state dots */}
+      <DatePicker value={selectedDate} onChange={setSelectedDate} />
 
       {/* Theme Toggle */}
       <button
