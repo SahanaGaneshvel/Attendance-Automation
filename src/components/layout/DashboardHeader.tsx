@@ -1,13 +1,10 @@
 import { Bell, Download, LogOut, ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useState, useRef, useEffect } from 'react'
-import { useAppStore, type DemoRole } from '@/store/appStore'
+import { useAppStore } from '@/store/appStore'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { DatePicker } from '@/components/console/DatePicker'
 import { getSummaryCsvUrl, downloadWithAuth } from '@/api'
-import { cn } from '@/lib/utils'
-
-const ROLES: DemoRole[] = ['dean', 'hod', 'teacher']
 
 interface DashboardHeaderProps {
   title: string
@@ -15,7 +12,7 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
-  const { selectedDate, setSelectedDate, role, setRole, showToast } = useAppStore()
+  const { selectedDate, setSelectedDate, role, showToast } = useAppStore()
   const { user, logout } = useAuthContext()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -54,17 +51,9 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
 
       <div className="topbar-spacer" />
 
-      {/* Demo role switcher — swaps which role's dashboard is shown */}
-      <div className="role-pill-group" title="Switch dashboard role (demo)">
-        {ROLES.map((r) => (
-          <button
-            key={r}
-            className={cn('role-pill', role === r && 'active')}
-            onClick={() => setRole(r)}
-          >
-            {r}
-          </button>
-        ))}
+      {/* Role badge - shows current user's role */}
+      <div className="role-badge">
+        <span className="role-badge-label">{role.toUpperCase()}</span>
       </div>
 
       <DatePicker value={selectedDate} onChange={setSelectedDate} />

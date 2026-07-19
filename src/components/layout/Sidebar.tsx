@@ -29,9 +29,7 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// Nav content differs slightly per role so each dashboard feels purpose-built,
-// while all currently point at the single scrollable view for that role
-// (business logic / routing is unchanged — this is presentation only).
+// Nav content per role - each key maps to a specific view/page
 const NAV_BY_ROLE: Record<DemoRole, NavGroup[]> = {
   dean: [
     {
@@ -91,11 +89,10 @@ const NAV_BY_ROLE: Record<DemoRole, NavGroup[]> = {
 }
 
 export function Sidebar() {
-  const { role, setRole, theme, toggleTheme } = useAppStore()
+  const { role, theme, toggleTheme, activeNavKey, setActiveNavKey } = useAppStore()
   const { user } = useAuthContext()
   const [collapsed, setCollapsed] = useState(false)
   const groups = NAV_BY_ROLE[role] ?? NAV_BY_ROLE.dean
-  const [activeKey, setActiveKey] = useState('overview')
 
   const initials = (user?.name ?? 'U')
     .split(' ')
@@ -122,12 +119,12 @@ export function Sidebar() {
           <nav className="sidebar-nav">
             {group.items.map((item) => {
               const Icon = item.icon
-              const isActive = activeKey === item.key
+              const isActive = activeNavKey === item.key
               return (
                 <motion.div
                   key={item.key}
                   className={cn('sidebar-item', isActive && 'active')}
-                  onClick={() => setActiveKey(item.key)}
+                  onClick={() => setActiveNavKey(item.key)}
                   whileTap={{ scale: 0.98 }}
                 >
                   <Icon className="sidebar-item-icon" />

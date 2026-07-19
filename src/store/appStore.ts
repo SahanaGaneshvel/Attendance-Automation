@@ -17,6 +17,10 @@ export interface SelectedScope {
 }
 
 interface AppState {
+  // Active navigation key (which page is shown)
+  activeNavKey: string
+  setActiveNavKey: (key: string) => void
+
   // Current date being viewed
   selectedDate: string
   setSelectedDate: (date: string) => void
@@ -65,6 +69,9 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  activeNavKey: 'overview',
+  setActiveNavKey: (key) => set({ activeNavKey: key }),
+
   selectedDate: TODAY,
   setSelectedDate: (date) => set({ selectedDate: date }),
 

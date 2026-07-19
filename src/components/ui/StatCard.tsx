@@ -15,11 +15,11 @@ const accentIconBg: Record<StatAccent, string> = {
   cyan: 'bg-[var(--cyan-bg)] text-[var(--cyan-ink)]',
 }
 
-interface StatCardProps {
+export interface StatCardProps {
   label: string
   value: ReactNode
   suffix?: string
-  icon: ReactNode
+  icon?: ReactNode
   accent?: StatAccent
   trend?: { value: number; label?: string }
   footnote?: ReactNode
@@ -50,7 +50,7 @@ export function StatCard({
     >
       <div className="stat-card-top">
         <span className="stat-card-label">{label}</span>
-        <span className={cn('stat-card-icon', accentIconBg[accent])}>{icon}</span>
+        {icon && <span className={cn('stat-card-icon', accentIconBg[accent])}>{icon}</span>}
       </div>
       <div className="stat-card-value">
         {value}
