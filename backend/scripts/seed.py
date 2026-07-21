@@ -2,7 +2,7 @@
 Seed script for Attendance Automation
 Creates: School → Department → Sections → Users (Teachers, HOD, Dean)
 
-Data source: ISC Department roster for Academic Year 2026-27
+Data source: DISC Department roster for Academic Year 2026-27
 """
 import sys
 import os
@@ -28,8 +28,8 @@ else:
     print(f"School already exists: {school_name}")
 
 # ── 2. Create the department ─────────────────────────────────────────
-dept_name = "Intelligent Systems and Cybersecurity"
-dept_code = "ISC"
+dept_name = "Department of Intelligent Systems and Cybersecurity"
+dept_code = "DISC"
 
 dept = db.query(Department).filter_by(code=dept_code).first()
 if not dept:
@@ -109,11 +109,11 @@ for year, semester, name, strength, teacher_name, teacher_email in sections_data
 print(f"\nCreated {sections_created} sections, {teachers_created} teachers")
 
 # ── 5. Create HOD for the department ───────────────────────────────────
-hod_email = "hod.isc@college.edu"
+hod_email = "hod.disc@college.edu"
 hod = db.query(User).filter_by(email=hod_email).first()
 if not hod:
     hod = User(
-        name="Dr. HOD ISC",
+        name="Dr. HOD DISC",
         email=hod_email,
         password_hash=password_hash,
         role="hod",
@@ -171,7 +171,7 @@ Login credentials (all users have the same password):
 Sample logins:
   Teacher:  subashri.r@college.edu
   Teacher:  christy.daniel@college.edu
-  HOD:      hod.isc@college.edu
+  HOD:      hod.disc@college.edu
   Dean:     dean.soc@college.edu
   Admin:    admin@college.edu
 """)
